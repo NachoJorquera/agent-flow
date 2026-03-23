@@ -1,0 +1,84 @@
+# Agent Flow
+
+Real-time visualization of Claude Code agent orchestration — see your agents think, branch, and return as they work.
+
+https://github.com/user-attachments/assets/14eb599d-2633-4df5-a07f-861839be5405
+
+![Agent Flow visualization](https://res.cloudinary.com/dxlvclh9c/image/upload/v1773924941/screenshot_e7yox3.png)
+
+## Why Agent Flow?
+
+Claude Code is powerful, but its execution is a black box — you see the final result, not the journey. Agent Flow makes the invisible visible:
+
+- **Understand agent behavior** — See how Claude breaks down problems, which tools it reaches for, and how subagents coordinate
+- **Debug tool call chains** — When something goes wrong, trace the exact sequence of decisions and tool calls that led there
+- **See where time is spent** — Identify slow tool calls, unnecessary branching, or redundant work at a glance
+- **Learn by watching** — Build intuition for how to write better prompts by observing how Claude interprets and executes them
+
+## Features
+
+- **Live agent visualization** — Watch agent execution as an interactive node graph with real-time tool calls, branching, and return flows
+- **Auto-detect Claude Code sessions** — Automatically discovers active Claude Code sessions in your workspace and streams events
+- **Claude Code hooks** — Lightweight HTTP hook server receives events directly from Claude Code for zero-latency streaming
+- **Multi-session support** — Track multiple concurrent agent sessions with tabs
+- **Interactive canvas** — Pan, zoom, click agents and tool calls to inspect details
+- **Timeline & transcript panels** — Review the full execution timeline, file attention heatmap, and message transcript
+- **JSONL log file support** — Point at any JSONL event log to replay or watch agent activity
+
+## Getting Started
+
+1. Install the extension
+2. Open the Command Palette (`Cmd+Shift+P`) and run **Agent Flow: Open Agent Flow**
+3. Start a Claude Code session in your workspace — Agent Flow will auto-detect it
+
+### Claude Code Hooks (recommended)
+
+For the lowest-latency live streaming, configure Claude Code hooks:
+
+1. Run **Agent Flow: Configure Claude Code Hooks** from the Command Palette
+2. This adds hook entries to your Claude Code `settings.json` that forward events to Agent Flow's built-in HTTP server
+
+### JSONL Event Log
+
+You can also point Agent Flow at a JSONL event log file:
+
+1. Set `agentVisualizer.eventLogPath` in your VS Code settings to the path of a `.jsonl` file
+2. Agent Flow will tail the file and visualize events as they arrive
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `Agent Flow: Open Agent Flow` | Open the visualizer panel |
+| `Agent Flow: Open Agent Flow to Side` | Open in a side editor column |
+| `Agent Flow: Connect to Running Agent` | Manually connect to an agent session |
+| `Agent Flow: Configure Claude Code Hooks` | Set up Claude Code hooks for live streaming |
+
+## Keyboard Shortcut
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd+Alt+A` (Mac) / `Ctrl+Alt+A` (Win/Linux) | Open Agent Flow |
+
+## Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `agentVisualizer.devServerPort` | `0` | Development server port (0 = production mode) |
+| `agentVisualizer.eventLogPath` | `""` | Path to a JSONL event log file to watch |
+| `agentVisualizer.autoOpen` | `false` | Auto-open when an agent session starts |
+
+## Requirements
+
+- VS Code 1.85 or later
+- For auto-detection: Claude Code CLI with active sessions
+
+## Author
+
+Created by [Simon Patole](https://github.com/patoles), for [CraftMyGame](https://craftmygame.com).
+
+## License
+
+Apache 2.0 — see [LICENSE](LICENSE) for details.
+
+The name "Agent Flow" and associated logos are trademarks of Simon Patole. See [TRADEMARK.md](TRADEMARK.md) for usage guidelines.

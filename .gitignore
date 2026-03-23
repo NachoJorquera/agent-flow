@@ -1,0 +1,20 @@
+node_modules
+dist
+.vite
+*.local
+.next
+*.vsix
+
+# Auto-generated
+extension/README.md
+next-env.d.ts
+*.tsbuildinfo
+
+# Local IDE config
+extension/.vscode/
+
+# Claude Code
+.claude/
+
+# Subdirectory lock files (project uses pnpm)
+extension/package-lock.json
