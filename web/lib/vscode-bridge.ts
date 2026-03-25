@@ -8,13 +8,11 @@
 
 export type { AgentEvent, SessionInfo, ConnectionStatus } from './bridge-types'
 import type { AgentEvent, SessionInfo, ConnectionStatus } from './bridge-types'
+import type {
+  BridgeAdapter, ConfigCallback, EventCallback, SessionCallback, StatusCallback,
+} from './bridge-runtime'
 
-type EventCallback = (event: AgentEvent) => void
-type StatusCallback = (status: ConnectionStatus, source: string) => void
-type ConfigCallback = (config: { mode: string; autoPlay: boolean; showMockData: boolean }) => void
-type SessionCallback = (type: 'list' | 'started' | 'ended' | 'updated' | 'reset', data: SessionInfo[] | SessionInfo | string | { sessionId: string; label: string }) => void
-
-class VSCodeBridge {
+export class VSCodeBridge implements BridgeAdapter {
   private _isVSCode = false
   private _status: ConnectionStatus = 'disconnected'
   private _source = ''
@@ -162,5 +160,6 @@ class VSCodeBridge {
   }
 }
 
-// Singleton — safe to import from anywhere
-export const vscodeBridge = typeof window !== 'undefined' ? new VSCodeBridge() : null
+export function createVSCodeBridge(): VSCodeBridge {
+  return new VSCodeBridge()
+}

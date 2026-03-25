@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { vscodeBridge, type ConnectionStatus, type AgentEvent, type SessionInfo } from '@/lib/vscode-bridge'
+import type { ConnectionStatus, AgentEvent, SessionInfo } from '@/lib/bridge-types'
+import { getActiveBridge } from '@/lib/bridge-runtime'
 import { SimulationEvent } from '@/lib/agent-types'
 
 interface BridgeHookResult {
@@ -40,9 +41,11 @@ interface BridgeHookResult {
  * sessions replays the correct event history.
  */
 export function useVSCodeBridge(): BridgeHookResult {
-  const [isVSCode, setIsVSCode] = useState(false)
+  const bridge = getActiveBridge()
+  const initialIsConnected = !!bridge && bridge.isVSCode
+  const [isVSCode, setIsVSCode] = useState(initialIsConnected)
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected')
-  const [useMockData, setUseMockData] = useState(true)
+  const [useMockData, setUseMockData] = useState(!initialIsConnected)
   const pendingEventsRef = useRef<SimulationEvent[]>([])
   const [, setEventVersion] = useState(0) // trigger re-render on new events
 
@@ -54,17 +57,42 @@ export function useVSCodeBridge(): BridgeHookResult {
   const [sessionsWithActivity, setSessionsWithActivity] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    const bridge = vscodeBridge
     if (!bridge) { return }
 
     // Listen for bridge initialization
-    const checkInterval = setInterval(() => {
+    const checkInterval = initialIsConnected ? null : setInterval(() => {
       if (bridge.isVSCode) {
         setIsVSCode(true)
         setUseMockData(false)
-        clearInterval(checkInterval)
+        if (checkInterval) clearInterval(checkInterval)
       }
     }, 100)
+
+    let isMounted = true
+
+    ;(async () => {
+      if (!bridge.getInitialState) return
+      const initialState = await bridge.getInitialState()
+      if (!isMounted || !initialState) return
+      setIsVSCode(true)
+      setUseMockData(initialState.config.showMockData)
+      setConnectionStatus(initialState.connectionStatus)
+      setSessions(initialState.sessions)
+      if (!selectedSessionIdRef.current && initialState.sessions.length > 0) {
+        const sorted = [...initialState.sessions].sort((a, b) => {
+          const aActive = a.status === 'active' ? 1 : 0
+          const bActive = b.status === 'active' ? 1 : 0
+          if (aActive !== bActive) return bActive - aActive
+          return b.lastActivityTime - a.lastActivityTime
+        })
+        const autoId = sorted[0].id
+        selectedSessionIdRef.current = autoId
+        setSelectedSessionId(autoId)
+      }
+      bridge.notifyInitialStateApplied?.()
+    })().catch((err) => {
+      console.warn('[bridge] bootstrap failed, falling back to runtime events', err)
+    })
 
     // Listen for events — buffer by session, deliver to pending if session matches.
     // selectedSessionIdRef is updated synchronously (not via React state) so it's
@@ -188,13 +216,14 @@ export function useVSCodeBridge(): BridgeHookResult {
     })
 
     return () => {
-      clearInterval(checkInterval)
+      isMounted = false
+      if (checkInterval) clearInterval(checkInterval)
       unsubEvent()
       unsubStatus()
       unsubConfig()
       unsubSession()
     }
-  }, [])
+  }, [bridge, initialIsConnected])
 
   const consumeEvents = useCallback(() => {
     // Clear in-place so stale closures in animation callbacks
@@ -243,8 +272,8 @@ export function useVSCodeBridge(): BridgeHookResult {
   }, [])
 
   const bridgeOpenFile = useCallback((filePath: string, line?: number) => {
-    vscodeBridge?.openFile(filePath, line)
-  }, [])
+    bridge?.openFile(filePath, line)
+  }, [bridge])
 
   return {
     isVSCode,

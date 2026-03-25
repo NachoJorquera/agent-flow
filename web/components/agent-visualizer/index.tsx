@@ -24,6 +24,8 @@ import { MOCK_DURATION } from "@/lib/mock-scenario"
 import { MessageFeedPanel } from "./message-feed-panel"
 import { TopBar } from "./top-bar"
 import { useAudioEffects } from "@/hooks/use-audio-effects"
+import { SettingsPanel } from "./settings-panel"
+import { getActiveBridge } from "@/lib/bridge-runtime"
 
 export function AgentVisualizer() {
   const bridge = useVSCodeBridge()
@@ -67,6 +69,9 @@ export function AgentVisualizer() {
   const [showTimeline, setShowTimeline] = useState(false)
   const [showFileAttention, setShowFileAttention] = useState(false)
   const [showTranscript, setShowTranscript] = useState(false)
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false)
+  const desktopBridge = getActiveBridge()
+  const showDesktopSettingsButton = !!(desktopBridge?.getSettings || desktopBridge?.getHooksStatus)
 
   // Mutually exclusive panel toggling — opening one closes the others
   const toggleExclusivePanel = useCallback((panel: 'files' | 'transcript' | 'cost') => {
@@ -380,10 +385,17 @@ export function AgentVisualizer() {
         showTranscript={showTranscript}
         showCostOverlay={showCostOverlay}
         showTimeline={showTimeline}
+        showDesktopSettingsButton={showDesktopSettingsButton}
         isMuted={isMuted}
         onTogglePanel={toggleExclusivePanel}
         onToggleTimeline={() => setShowTimeline(prev => !prev)}
+        onOpenSettings={() => setShowSettingsPanel(true)}
         onToggleMute={handleToggleMute}
+      />
+
+      <SettingsPanel
+        visible={showSettingsPanel}
+        onClose={() => setShowSettingsPanel(false)}
       />
     </div>
     </OpenFileProvider>

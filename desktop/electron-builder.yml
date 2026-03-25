@@ -1,0 +1,16 @@
+appId: com.agentflow.desktop
+productName: Agent Flow
+directories:
+  output: release
+files:
+  - dist/**/*
+asar: true
+mac:
+  category: public.app-category.developer-tools
+  hardenedRuntime: true
+  entitlements: entitlements.mac.plist
+  icon: resources/icon.icns
+  target:
+    - dmg
+extraMetadata:
+  main: dist/main/main.js
