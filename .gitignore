@@ -16,5 +16,9 @@ extension/.vscode/
 # Claude Code
 .claude/
 
+# Electron build artifacts
+desktop/release/
+desktop/dist/
+
 # Subdirectory lock files (project uses pnpm)
 extension/package-lock.json

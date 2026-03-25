@@ -143,7 +143,7 @@ function LiveControlBar({
         {/* Review button */}
         <button
           onClick={onEnterReview}
-          className="px-2.5 py-1 rounded text-[10px] font-mono transition-all hover:scale-105"
+          className="px-2.5 py-1 rounded text-[10px] font-mono transition-all hover:scale-105 cursor-pointer"
           style={{
             background: COLORS.holoBg10,
             border: `1px solid ${COLORS.reviewBtnBorder}`,
@@ -199,7 +199,7 @@ function ReviewControlBar({
         {/* Play/Pause */}
         <button
           onClick={onPlayPause}
-          className="w-9 h-9 rounded-full flex items-center justify-center transition-all shrink-0 hover:scale-110"
+          className="w-9 h-9 rounded-full flex items-center justify-center transition-all shrink-0 hover:scale-110 cursor-pointer"
           style={{
             background: isPlaying ? COLORS.playBtnActiveBg : COLORS.playBtnBg,
             border: `1.5px solid ${COLORS.playBtnBorder}`,
@@ -270,7 +270,7 @@ function ReviewControlBar({
             <button
               key={s}
               onClick={() => onSpeedChange(s)}
-              className="px-2 py-0.5 rounded text-[10px] font-mono transition-all"
+              className="px-2 py-0.5 rounded text-[10px] font-mono transition-all cursor-pointer"
               style={{
                 background: speed === s ? COLORS.playBtnActiveBg : 'transparent',
                 color: speed === s ? COLORS.textPrimary : COLORS.textMuted,
@@ -285,7 +285,7 @@ function ReviewControlBar({
         {isReviewing && (
           <button
             onClick={onResumeLive}
-            className="px-2.5 py-1 rounded text-[10px] font-mono font-semibold transition-all hover:scale-105 shrink-0"
+            className="px-2.5 py-1 rounded text-[10px] font-mono font-semibold transition-all hover:scale-105 shrink-0 cursor-pointer"
             style={{
               background: COLORS.liveResumeBg,
               border: `1px solid ${COLORS.liveResumeBorder}`,
@@ -300,7 +300,7 @@ function ReviewControlBar({
         {isReviewing && (
           <button
             onClick={onRestart}
-            className="text-sm transition-all shrink-0 hover:scale-110"
+            className="text-sm transition-all shrink-0 hover:scale-110 cursor-pointer"
             style={{ color: COLORS.textDim }}
           >
             ⟲

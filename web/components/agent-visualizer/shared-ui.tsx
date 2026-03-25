@@ -27,7 +27,7 @@ export function CloseButton({ onClick, className = '' }: CloseButtonProps) {
   return (
     <button
       onClick={onClick}
-      className={`text-xs transition-colors ${className}`}
+      className={`text-xs transition-colors cursor-pointer ${className}`}
       style={{ color: COLORS.textMuted }}
     >
       ✕

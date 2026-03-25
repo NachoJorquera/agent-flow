@@ -227,7 +227,7 @@ export function MessageFeedPanel({
           </span>
           <button
             onClick={() => setExpanded(false)}
-            className="text-[9px] transition-colors"
+            className="text-[9px] transition-colors cursor-pointer"
             style={{ color: COLORS.textMuted }}
           >
             ▴
@@ -304,7 +304,7 @@ function TabButton({ label, active, onClick, color, hasUnread }: {
   return (
     <button
       onClick={onClick}
-      className="px-2 py-0.5 rounded text-[9px] font-mono transition-all shrink-0 relative"
+      className="px-2 py-0.5 rounded text-[9px] font-mono transition-all shrink-0 relative cursor-pointer"
       style={{
         background: active ? color + '20' : 'transparent',
         color: active ? color : COLORS.textMuted,

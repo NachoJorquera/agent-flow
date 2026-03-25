@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react'
 import { COLORS } from '@/lib/colors'
-import type { SessionInfo } from '@/lib/vscode-bridge'
+import type { SessionInfo } from '@/lib/bridge-types'
 
 interface SessionTabsProps {
   sessions: SessionInfo[]
@@ -46,7 +46,7 @@ export function SessionTabs({
             key={session.id}
             ref={(el) => setButtonRef(session.id, el)}
             onClick={() => onSelectSession(session.id)}
-            className="group px-1.5 py-0.5 rounded transition-all flex items-center gap-1"
+            className="group px-1.5 py-0.5 rounded transition-all flex items-center gap-1 cursor-pointer"
             style={{
               flexShrink: 0,
               whiteSpace: 'nowrap',

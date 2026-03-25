@@ -308,7 +308,7 @@ export class SessionWatcher implements vscode.Disposable {
       this.readNewLines(sessionId)
       // Also poll subagent files — fs.watch may not fire after extension restart
       for (const [subPath] of session.subagentWatchers) {
-        readSubagentNewLines(this.selfDelegate, this.parser,subPath, sessionId)
+        readSubagentNewLines(this.selfDelegate, this.parser, subPath, sessionId)
       }
       scanSubagentsDir(this.selfDelegate, this.parser, sessionId)
     }, POLL_FALLBACK_MS)

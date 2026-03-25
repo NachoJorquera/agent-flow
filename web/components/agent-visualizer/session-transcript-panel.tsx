@@ -71,7 +71,7 @@ export function SessionTranscriptPanel({
           <div className="flex items-center gap-1">
             <button
               onClick={() => { setShowSearch(s => !s); if (showSearch) setSearchQuery('') }}
-              className="text-[9px] font-mono px-1.5 py-0.5 rounded transition-all"
+              className="text-[9px] font-mono px-1.5 py-0.5 rounded transition-all cursor-pointer"
               style={{
                 background: showSearch ? COLORS.toggleActive : 'transparent',
                 color: showSearch ? COLORS.assistantText : COLORS.textMuted,
@@ -130,7 +130,7 @@ export function SessionTranscriptPanel({
             <div className="sticky bottom-0 flex justify-center py-1">
               <button
                 onClick={scrollToBottom}
-                className="text-[9px] font-mono px-3 py-1 rounded-full transition-all"
+                className="text-[9px] font-mono px-3 py-1 rounded-full transition-all cursor-pointer"
                 style={{
                   background: COLORS.holoBg10,
                   border: `1px solid ${COLORS.glassBorder}`,

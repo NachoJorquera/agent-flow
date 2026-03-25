@@ -41,7 +41,7 @@ function ToggleButton({ active, onClick, children, style, activeColor }: {
   return (
     <button
       onClick={onClick}
-      className="px-1.5 py-0.5 rounded transition-all"
+      className="px-1.5 py-0.5 rounded transition-all cursor-pointer"
       style={{
         background: active ? (activeColor?.bg ?? COLORS.toggleActive) : COLORS.toggleInactive,
         border: `1px solid ${COLORS.toggleBorder}`,
@@ -93,9 +93,11 @@ export interface TopBarProps {
   showTranscript: boolean
   showCostOverlay: boolean
   showTimeline: boolean
+  showDesktopSettingsButton: boolean
   isMuted: boolean
   onTogglePanel: (panel: 'files' | 'transcript' | 'cost') => void
   onToggleTimeline: () => void
+  onOpenSettings: () => void
   onToggleMute: () => void
 }
 
@@ -104,11 +106,17 @@ export function TopBar({
   onSelectSession, onCloseSession,
   isVSCode, connectionStatus,
   agents, totalTokens,
-  showFileAttention, showTranscript, showCostOverlay, showTimeline, isMuted,
-  onTogglePanel, onToggleTimeline, onToggleMute,
+  showFileAttention, showTranscript, showCostOverlay, showTimeline, showDesktopSettingsButton, isMuted,
+  onTogglePanel, onToggleTimeline, onOpenSettings, onToggleMute,
 }: TopBarProps) {
   return (
-    <div className="absolute top-3 left-3 right-3 flex items-center gap-4 font-mono text-[10px]" style={{ zIndex: Z.info }}>
+    <div
+      className={[
+        'absolute top-3 left-3 right-3 flex items-center gap-4 font-mono text-[10px]',
+        showDesktopSettingsButton && 'pl-[70px]',
+      ].filter(Boolean).join(' ')}
+      style={{ zIndex: Z.info }}
+    >
       {/* Session tabs — scrollable, takes available space */}
       {sessions.length > 1 && (
         <div className="min-w-0 flex-shrink overflow-x-auto scrollbar-hide">
@@ -155,6 +163,9 @@ export function TopBar({
 
         {/* Independent toggles */}
         <ToggleButton active={showTimeline} onClick={onToggleTimeline}>Timeline</ToggleButton>
+        {showDesktopSettingsButton && (
+          <ToggleButton active={false} onClick={onOpenSettings}>Settings</ToggleButton>
+        )}
         <ToggleButton active={!isMuted} onClick={onToggleMute} style={{ border: `1px solid ${COLORS.toggleBorder}` }}>
           {isMuted ? <MutedIcon /> : <UnmutedIcon />}
         </ToggleButton>
