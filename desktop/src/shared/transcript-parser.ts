@@ -564,7 +564,7 @@ export class TranscriptParser {
     return firstLine.slice(0, SESSION_LABEL_TRUNCATED) + '..'
   }
 
-  /** Update session label on first user message and notify the webview */
+  /** Update session label on first user message and notify the renderer */
   maybeSetSessionLabel(entry: TranscriptEntry, sessionId: string): void {
     const session = this.delegate.getSession(sessionId)
     if (!session || session.labelSet) return

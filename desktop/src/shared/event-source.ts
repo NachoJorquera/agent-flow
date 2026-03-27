@@ -2,7 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { AgentEvent } from './protocol'
 import { readNewFileLines } from './fs-utils'
-import { Disposable, TypedEventEmitter } from './vscode-shim'
+import { Disposable, TypedEventEmitter } from './event-emitter'
 
 /**
  * Watches a JSONL file for agent events.

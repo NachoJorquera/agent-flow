@@ -198,7 +198,7 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
         }
       }
 
-      // Process NEW external events (from VS Code bridge)
+      // Process NEW external events (from host bridge)
       // Copy and clear immediately to prevent stale closures from
       // reprocessing the same events across multiple animation frames
       if (externalEvents && externalEvents.length > 0) {

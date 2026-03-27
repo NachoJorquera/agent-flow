@@ -6,29 +6,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Agent Flow provides real-time visualization of Claude Code agent orchestration. It displays interactive node graphs of agent sessions, tool call chains, and subagent hierarchies. Licensed under Apache 2.0.
 
-The project has two deployment targets:
-- **VS Code extension** — Webview panel inside VS Code (`extension/`)
-- **Standalone Mac app** — Electron desktop app (`desktop/`)
-
-Both share the same React frontend (`web/`).
+The project is a **standalone Mac desktop app** (Electron) with a shared React frontend.
 
 ## Repository Structure
 
-This is a monorepo with three packages:
+This is a monorepo with two packages:
 
-- **`extension/`** — VS Code extension backend (Node.js, TypeScript, esbuild)
 - **`desktop/`** — Electron Mac app (TypeScript, esbuild for main process)
 - **`web/`** — Shared React frontend (React 19, Vite, Tailwind CSS 4, D3-force)
 
 ```
 agent-flow/
-├── extension/           # VS Code extension
-│   └── src/             # Extension source (vscode API dependent)
 ├── desktop/             # Electron app
 │   └── src/
 │       ├── main/        # Electron main process
 │       ├── preload/     # contextBridge IPC layer
-│       └── shared/      # Backend logic adapted from extension/src/
+│       └── shared/      # Backend logic (session watcher, hook server, parser)
 └── web/                 # Shared React frontend
     ├── components/      # UI components (agent-visualizer, canvas, panels)
     ├── hooks/           # React hooks (simulation, bridge, camera, interaction)
@@ -47,19 +40,9 @@ npm start               # Run built app
 npm run package         # Create .dmg for Mac distribution
 ```
 
-### Extension (run from `extension/`)
-```bash
-npm run build           # Build extension with esbuild
-npm run watch           # Rebuild on file changes
-npm run lint            # TypeScript type-check (tsc --noEmit)
-npm run build:all       # Build webview + extension together
-npm run package         # Create .vsix package for distribution
-```
-
 ### Web/Frontend (run from `web/`)
 ```bash
 pnpm run dev            # Next.js dev server (port 3000)
-pnpm run build:webview  # Vite IIFE build → extension/dist/webview/
 pnpm run build:electron # Vite build → desktop/dist/renderer/
 ```
 
@@ -67,7 +50,7 @@ Tests use Vitest. Run `npm test` from `desktop/` or `pnpm test` from `web/`.
 
 ## Architecture
 
-### Data Flow (both targets)
+### Data Flow
 ```
 Claude Code hooks → HTTP POST → Hook Server
                                      ↓
@@ -75,11 +58,7 @@ JSONL transcripts → Session Watcher ──┘
                          ↓
                   Transcript Parser → AgentEvent objects
                          ↓
-              ┌──────────┴──────────┐
-              │                     │
-    VS Code: postMessage    Electron: IPC
-              │                     │
-              └──────────┬──────────┘
+                    Electron IPC
                          ↓
                   Bridge Adapter (React)
                          ↓
@@ -98,26 +77,16 @@ JSONL transcripts → Session Watcher ──┘
 - **`main/menu.ts`** — macOS application menu (Edit for copy/paste, View for DevTools)
 - **`main/power-save.ts`** — Prevents macOS App Nap from freezing timers during background operation
 - **`preload/preload.ts`** — `contextBridge` exposing `window.electronAPI` (secure IPC)
-- **`shared/vscode-shim.ts`** — Drop-in replacement for `vscode.EventEmitter` and `vscode.Disposable`
-- **`shared/event-dedup.ts`** — Hook/watcher dedup logic extracted from `extension.ts`
-- **`shared/session-watcher.ts`** — Adapted: uses `TypedEventEmitter`, scans ALL projects globally (no workspace scoping)
-
-### Extension Key Files (`extension/src/`)
-- **`extension.ts`** — Entry point, registers commands and activates watchers
-- **`webview-provider.ts`** — VS Code webview panel management (CSP, HTML generation, postMessage)
-- **`hook-server.ts`** — HTTP server receiving real-time events from Claude Code hooks
-- **`session-watcher.ts`** — Monitors `~/.claude/projects/` scoped to the active workspace
-- **`transcript-parser.ts`** — Parses JSONL into typed `AgentEvent` objects (13 event types)
-- **`discovery.ts`** — Service discovery via JSON files in `~/.claude/agent-flow/`
-- **`protocol.ts`** — Typed message protocol between extension and webview
+- **`shared/event-emitter.ts`** — `TypedEventEmitter<T>` and `Disposable` interface
+- **`shared/event-dedup.ts`** — Hook/watcher dedup logic
+- **`shared/session-watcher.ts`** — Scans ALL projects globally in `~/.claude/projects/`
 
 ### Web Key Files (`web/`)
 - **`electron-entry.tsx`** — Mount point for Electron renderer
-- **`webview-entry.tsx`** — Mount point for VS Code webview (uses `acquireVsCodeApi`)
-- **`lib/bridge-runtime.ts`** — Bridge adapter interface (`BridgeAdapter`) and factory: selects `ElectronBridge` or `VSCodeBridge` based on environment
+- **`lib/bridge-runtime.ts`** — Bridge adapter interface (`BridgeAdapter`) and factory: returns `ElectronBridge` when hosted, `StandaloneBridge` as fallback
 - **`lib/electron-bridge.ts`** — Electron IPC bridge implementation
-- **`lib/vscode-bridge.ts`** — VS Code postMessage bridge implementation
-- **`hooks/use-vscode-bridge.ts`** — React hook consuming the active bridge (multi-session buffering, event delivery)
+- **`lib/standalone-bridge.ts`** — Noop bridge for standalone web dev/demo
+- **`hooks/use-bridge.ts`** — React hook consuming the active bridge (multi-session buffering, event delivery)
 - **`components/agent-visualizer/index.tsx`** — Main orchestrator component
 - **`hooks/use-agent-simulation.ts`** — D3-force physics simulation and event processing engine
 - **`hooks/simulation/`** — Event processing submodules (agent, tool, message, subagent handlers)
@@ -128,13 +97,11 @@ JSONL transcripts → Session Watcher ──┘
 
 The frontend uses a `BridgeAdapter` interface (`web/lib/bridge-runtime.ts`) that abstracts the communication layer:
 - **`ElectronBridge`** — Uses `window.electronAPI` (exposed by preload via `contextBridge`)
-- **`VSCodeBridge`** — Uses `window.postMessage` (dev) or `acquireVsCodeApi` (production webview)
+- **`StandaloneBridge`** — Noop bridge for standalone web dev/demo mode
 
-Entry points select the appropriate bridge:
-- `electron-entry.tsx` → creates `ElectronBridge`, calls `setActiveBridge()`
-- `webview-entry.tsx` → creates `VSCodeBridge` via `configureWebviewApi()`
+Entry point: `electron-entry.tsx` creates `ElectronBridge` and calls `setActiveBridge()`.
 
-The hook `useVSCodeBridge()` calls `getActiveBridge()` and works identically for both.
+The hook `useBridge()` calls `getActiveBridge()` and manages multi-session state.
 
 ### Electron IPC Handshake
 
@@ -148,18 +115,22 @@ Events come from two sources simultaneously:
 1. **Hook server** — Real-time HTTP events from Claude Code hooks (low latency)
 2. **Session watcher** — JSONL transcript file monitoring (richer metadata, accurate subagent names)
 
-Dedup logic (in `desktop/src/shared/event-dedup.ts` and `extension/src/extension.ts`):
+Dedup logic (in `desktop/src/shared/event-dedup.ts`):
 - If session watcher owns a session: block subagent lifecycle events from hooks (watcher has better names), pass through tool/message events
 - `filterOrchestratorCompletion`: converts orchestrator `agent_complete` → `agent_idle` (prevents premature "completed" state) unless `sessionEnd: true`
 
 ### Shared Backend (`desktop/src/shared/`)
 
-Files adapted from `extension/src/` with minimal changes:
-- **`vscode-shim.ts`** — `TypedEventEmitter<T>` (matches `vscode.EventEmitter` API: `.event`, `.fire()`, `.dispose()`) and `Disposable` interface
-- **`session-watcher.ts`** — Swapped `vscode.EventEmitter` → `TypedEventEmitter`, removed workspace scoping (always scans all of `~/.claude/projects/`)
-- **`hook-server.ts`**, **`event-source.ts`** — Swapped EventEmitter only
-
-Files copied unchanged: `transcript-parser.ts`, `subagent-watcher.ts`, `permission-detection.ts`, `fs-utils.ts`, `tool-summarizer.ts`, `token-estimator.ts`, `protocol.ts`, `logger.ts`, `constants.ts`, `discovery.ts`
+Core backend modules:
+- **`event-emitter.ts`** — `TypedEventEmitter<T>` (typed event emitter with `.event`, `.fire()`, `.dispose()`) and `Disposable` interface
+- **`session-watcher.ts`** — Scans all of `~/.claude/projects/` for active sessions
+- **`hook-server.ts`**, **`event-source.ts`** — HTTP hook server and JSONL event source
+- **`transcript-parser.ts`** — Parses JSONL into typed `AgentEvent` objects (13 event types)
+- **`subagent-watcher.ts`** — Watches subagent transcript files
+- **`permission-detection.ts`** — Detects pending permission requests
+- **`discovery.ts`** — Service discovery via JSON files in `~/.claude/agent-flow/`
+- **`protocol.ts`** — Typed event protocol definitions
+- **`constants.ts`** — All shared constants (timing, truncation, strings)
 
 ## Development Workflow
 
@@ -169,20 +140,14 @@ cd desktop && npm run dev
 ```
 This starts three concurrent processes: esbuild watch for main process, Vite dev server for renderer (port 5173), and Electron loading from the dev server. Main process detects `ELECTRON_RENDERER_URL` env var to load from dev server instead of built files.
 
-### VS Code Extension
-1. In `web/`: `pnpm run dev` (starts Next.js on port 3000)
-2. In VS Code settings: set `agentVisualizer.devServerPort` to `3002`
-3. Press F5 to launch extension debug host
-
 ### Build Output
-- Extension webview: `web/vite.config.webview.ts` → IIFE bundle at `extension/dist/webview/`
 - Electron renderer: `web/vite.config.electron.ts` → standard Vite build at `desktop/dist/renderer/`
 - Desktop main process: `desktop/esbuild.main.mjs` → `desktop/dist/main/main.js`
 
 ## Key Conventions
 
-- Extension uses CommonJS (esbuild), desktop main uses CommonJS (esbuild), web uses ESNext
-- The renderer has no access to Node.js APIs — all system operations go through IPC (Electron) or postMessage (VS Code)
+- Desktop main uses CommonJS (esbuild), web uses ESNext
+- The renderer has no access to Node.js APIs — all system operations go through IPC (Electron)
 - Agent states: `idle` → `thinking` → `tool_calling` → `complete` (also `error`, `paused`, `waiting_permission`)
 - Canvas rendering uses multiple draw passes: background → edges → agents → tool calls → effects → UI overlays
 - D3-force simulation handles agent positioning with charge, center, collide, and link forces

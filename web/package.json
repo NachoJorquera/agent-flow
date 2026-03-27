@@ -6,7 +6,6 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "build:webview": "vite build --config vite.config.webview.ts",
     "build:electron": "vite build --config vite.config.electron.ts",
     "test": "vitest run",
     "test:watch": "vitest"

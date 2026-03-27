@@ -11,7 +11,7 @@ import { readNewFileLines } from './fs-utils'
 import { handlePermissionDetection } from './permission-detection'
 import { scanSubagentsDir, readSubagentNewLines } from './subagent-watcher'
 import { createLogger } from './logger'
-import { Disposable, TypedEventEmitter } from './vscode-shim'
+import { Disposable, TypedEventEmitter } from './event-emitter'
 
 const log = createLogger('SessionWatcher')
 
@@ -40,7 +40,6 @@ export class SessionWatcher implements Disposable {
   private dirWatcher: fs.FSWatcher | null = null
   private rootDirWatcher: fs.FSWatcher | null = null
   private sessions = new Map<string, WatchedSession>()
-  private workspacePath: string | null = null
   private scanInterval: NodeJS.Timeout | null = null
   private rootWatchDebounce: NodeJS.Timeout | null = null
   private readonly claudeDir: string
@@ -109,7 +108,7 @@ export class SessionWatcher implements Disposable {
     }))
   }
 
-  /** Re-emit session start + conversation events for a newly connected webview.
+  /** Re-emit session start + conversation events for a newly connected renderer.
    *  If sessionIds is provided, only replay those sessions. */
   replaySessionStart(sessionIds?: string[]): void {
     for (const event of this.buildReplayStartEvents(sessionIds)) {
@@ -153,23 +152,8 @@ export class SessionWatcher implements Disposable {
 
     this.scanForActiveSessions()
 
-    // Watch the project directory for instant new-file detection
-    if (this.workspacePath) {
-      const projectDir = path.join(this.claudeDir, this.workspacePath)
-      if (this.pathExists(projectDir)) {
-        try {
-          this.dirWatcher = this.watchPath(projectDir, (_eventType, filename) => {
-            const fileName = typeof filename === 'string' ? filename : filename?.toString()
-            if (fileName && fileName.endsWith('.jsonl')) {
-              const sessionId = path.basename(fileName, '.jsonl')
-              if (!this.sessions.has(sessionId)) {
-                this.scanForActiveSessions()
-              }
-            }
-          })
-        } catch (err) { log.debug('Dir watch failed (may not exist yet):', err) }
-      }
-    } else if (this.enableGlobalRootWatch && this.pathExists(this.claudeDir)) {
+    // Watch the projects root directory for instant new-file detection
+    if (this.enableGlobalRootWatch && this.pathExists(this.claudeDir)) {
       try {
         this.rootDirWatcher = this.watchPath(this.claudeDir, () => {
           if (this.rootWatchDebounce) clearTimeout(this.rootWatchDebounce)
@@ -196,17 +180,10 @@ export class SessionWatcher implements Disposable {
 
     try {
       const dirsToScan: string[] = []
-      if (this.workspacePath) {
-        const projectDir = path.join(this.claudeDir, this.workspacePath)
-        if (fs.existsSync(projectDir)) {
-          dirsToScan.push(projectDir)
-        }
-      } else {
-        const projectDirs = fs.readdirSync(this.claudeDir, { withFileTypes: true })
-        for (const dir of projectDirs) {
-          if (dir.isDirectory()) {
-            dirsToScan.push(path.join(this.claudeDir, dir.name))
-          }
+      const projectDirs = fs.readdirSync(this.claudeDir, { withFileTypes: true })
+      for (const dir of projectDirs) {
+        if (dir.isDirectory()) {
+          dirsToScan.push(path.join(this.claudeDir, dir.name))
         }
       }
 
@@ -321,12 +298,12 @@ export class SessionWatcher implements Disposable {
     }, sessionId)
     session.sessionDetected = true
 
-    // Emit initial context breakdown from prescan so the webview shows accumulated tokens
+    // Emit initial context breakdown from prescan so the renderer shows accumulated tokens
     this.emitContextUpdate(ORCHESTRATOR_NAME, session, sessionId)
 
     // Emit catch-up messages for content that was already in the file when we detected
     // the session (e.g. the first user message). These were pre-scanned for dedup/tokens
-    // but never emitted as events. Emit them now so the webview shows the full history.
+    // but never emitted as events. Emit them now so the renderer shows the full history.
     this.parser.emitCatchUpEntries(catchUpEntries, session, sessionId)
 
     // Watch for new content
@@ -386,7 +363,7 @@ export class SessionWatcher implements Disposable {
     session.sessionCompleted = false
 
     // If the session was previously marked completed, re-emit agent_spawn
-    // so the webview can receive events for this agent again, then notify
+    // so the renderer can receive events for this agent again, then notify
     // the frontend that it's active again.
     if (wasCompleted) {
       this.emit({

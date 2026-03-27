@@ -39,7 +39,7 @@ function createDesktopBridge() {
   const openClaudeSettings = vi.fn(async () => {})
 
   const bridge: BridgeAdapter = {
-    isVSCode: true,
+    isHosted: true,
     onEvent: () => () => {},
     onStatus: () => () => {},
     onConfig: () => () => {},
@@ -85,7 +85,7 @@ describe('SettingsPanel', () => {
   it('does not render when bridge lacks desktop support', () => {
     resetBridgeForTests()
     const bridge: BridgeAdapter = {
-      isVSCode: true,
+      isHosted: true,
       onEvent: () => () => {},
       onStatus: () => () => {},
       onConfig: () => () => {},

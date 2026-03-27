@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef } from "react"
 import { useAgentSimulation } from "@/hooks/use-agent-simulation"
-import { useVSCodeBridge } from "@/hooks/use-vscode-bridge"
+import { useBridge } from "@/hooks/use-bridge"
 import { useSelectionState } from "@/hooks/use-selection-state"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import { AgentCanvas } from "./canvas"
@@ -28,7 +28,7 @@ import { SettingsPanel } from "./settings-panel"
 import { getActiveBridge } from "@/lib/bridge-runtime"
 
 export function AgentVisualizer() {
-  const bridge = useVSCodeBridge()
+  const bridge = useBridge()
 
   const {
     agents,
@@ -229,7 +229,7 @@ export function AgentVisualizer() {
   }, [bridge])
 
   return (
-    <OpenFileProvider value={bridge.isVSCode ? openFile : null}>
+    <OpenFileProvider value={bridge.isHosted ? openFile : null}>
     <div className="h-screen w-screen relative overflow-hidden" style={{ background: COLORS.void }}>
       {/* Canvas fills everything */}
       <AgentCanvas
@@ -343,7 +343,7 @@ export function AgentVisualizer() {
         visible={showFileAttention}
         fileAttention={fileAttention}
         onClose={() => setShowFileAttention(false)}
-        onOpenFile={bridge.isVSCode ? openFile : undefined}
+        onOpenFile={bridge.isHosted ? openFile : undefined}
       />
 
       {/* Session transcript panel (slide-in from right) */}
@@ -377,7 +377,7 @@ export function AgentVisualizer() {
             }
           }
         }}
-        isVSCode={bridge.isVSCode}
+        isHosted={bridge.isHosted}
         connectionStatus={bridge.connectionStatus}
         agents={agents}
         totalTokens={totalTokens}

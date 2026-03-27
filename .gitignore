@@ -6,12 +6,8 @@ dist
 *.vsix
 
 # Auto-generated
-extension/README.md
 next-env.d.ts
 *.tsbuildinfo
-
-# Local IDE config
-extension/.vscode/
 
 # Claude Code
 .claude/
@@ -19,6 +15,3 @@ extension/.vscode/
 # Electron build artifacts
 desktop/release/
 desktop/dist/
-
-# Subdirectory lock files (project uses pnpm)
-extension/package-lock.json

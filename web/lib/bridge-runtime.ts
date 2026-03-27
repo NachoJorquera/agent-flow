@@ -1,4 +1,4 @@
-import { createVSCodeBridge } from './vscode-bridge'
+import { StandaloneBridge } from './standalone-bridge'
 
 export interface VisualizerConfig {
   mode: string
@@ -52,8 +52,8 @@ export type SessionCallback = (
 ) => void
 
 export interface BridgeAdapter {
-  /** Whether the bridge is connected to a host (VS Code or Electron). Named for legacy compatibility. */
-  readonly isVSCode: boolean
+  /** Whether the bridge is connected to a host (Electron or other backend). */
+  readonly isHosted: boolean
   onEvent(cb: EventCallback): () => void
   onStatus(cb: StatusCallback): () => void
   onConfig(cb: ConfigCallback): () => void
@@ -80,7 +80,7 @@ export function getActiveBridge(): BridgeAdapter | null {
   if (activeBridge) return activeBridge
   if (typeof window === 'undefined') return null
   if (!fallbackBridge) {
-    fallbackBridge = createVSCodeBridge()
+    fallbackBridge = new StandaloneBridge()
   }
   return fallbackBridge
 }

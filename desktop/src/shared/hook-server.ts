@@ -9,7 +9,7 @@ import {
 import { summarizeInput, summarizeResult, extractFilePath, buildDiscovery } from './tool-summarizer'
 import { estimateTokenCost } from './token-estimator'
 import { createLogger } from './logger'
-import { Disposable, TypedEventEmitter } from './vscode-shim'
+import { Disposable, TypedEventEmitter } from './event-emitter'
 
 const log = createLogger('HookServer')
 

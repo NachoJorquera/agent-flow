@@ -1,8 +1,8 @@
 /**
- * Message protocol between VS Code extension host and webview.
+ * Message protocol between Electron main process and renderer.
  *
- * Extension → Webview: agent events, state updates, connection status
- * Webview → Extension: user commands (inject, connect/disconnect)
+ * Main → Renderer: agent events, state updates, connection status
+ * Renderer → Main: user commands (inject, connect/disconnect)
  */
 
 // ─── Agent Event Types (from real agent sessions) ────────────────────────────

@@ -1,9 +1,9 @@
 /**
- * Shared types for the VS Code bridge protocol.
+ * Shared types for the bridge protocol.
  *
- * These types mirror extension/src/protocol.ts and are kept separate
+ * These types mirror desktop/src/shared/protocol.ts and are kept separate
  * to avoid cross-project imports. When updating these, also update
- * the canonical definitions in extension/src/protocol.ts.
+ * the canonical definitions in desktop/src/shared/protocol.ts.
  */
 
 export interface AgentEvent {

@@ -1,10 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { resetBridgeForTests, setActiveBridge, type BridgeAdapter } from '@/lib/bridge-runtime'
-import { useVSCodeBridge } from './use-vscode-bridge'
+import { useBridge } from './use-bridge'
 
 function HookHarness() {
-  const bridge = useVSCodeBridge()
+  const bridge = useBridge()
   return (
     <div>
       <div data-testid="mock">{String(bridge.useMockData)}</div>
@@ -14,13 +14,13 @@ function HookHarness() {
   )
 }
 
-describe('useVSCodeBridge', () => {
+describe('useBridge', () => {
   it('boots from electron snapshot without mock flash and notifies ready', async () => {
     resetBridgeForTests()
     const notifyInitialStateApplied = vi.fn()
     const eventListeners: Array<(event: { time: number; type: string; payload: Record<string, unknown>; sessionId?: string }) => void> = []
     const bridge: BridgeAdapter = {
-      isVSCode: true,
+      isHosted: true,
       onEvent: (cb) => { eventListeners.push(cb); return () => {} },
       onStatus: () => () => {},
       onConfig: () => () => {},

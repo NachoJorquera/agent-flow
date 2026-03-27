@@ -83,7 +83,7 @@ export interface TopBarProps {
   onSelectSession: (id: string) => void
   onCloseSession: (id: string) => void
   // Connection
-  isVSCode: boolean
+  isHosted: boolean
   connectionStatus: ConnectionStatus
   // Stats
   agents: Map<string, Agent>
@@ -104,7 +104,7 @@ export interface TopBarProps {
 export function TopBar({
   sessions, selectedSessionId, sessionsWithActivity,
   onSelectSession, onCloseSession,
-  isVSCode, connectionStatus,
+  isHosted, connectionStatus,
   agents, totalTokens,
   showFileAttention, showTranscript, showCostOverlay, showTimeline, showDesktopSettingsButton, isMuted,
   onTogglePanel, onToggleTimeline, onOpenSettings, onToggleMute,
@@ -135,7 +135,7 @@ export function TopBar({
 
       {/* Right-side info/controls */}
       <div className="flex items-center gap-4 flex-shrink-0" style={{ color: COLORS.textMuted }}>
-        {isVSCode && <ConnectionIndicator status={connectionStatus} />}
+        {isHosted && <ConnectionIndicator status={connectionStatus} />}
         <span>{agents.size} agents</span>
         <span>
           {formatTokens(totalTokens)} tokens

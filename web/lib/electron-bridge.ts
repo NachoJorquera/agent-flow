@@ -71,7 +71,7 @@ export class ElectronBridge implements BridgeAdapter {
     )
   }
 
-  get isVSCode(): boolean {
+  get isHosted(): boolean {
     return true
   }
 

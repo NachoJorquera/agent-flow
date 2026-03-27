@@ -11,7 +11,7 @@ Before your first contribution can be merged, you must sign the [Contributor Lic
 ### Reporting Bugs
 
 - Open an issue describing the bug, including steps to reproduce
-- Include your environment details (OS, VS Code version, Node version)
+- Include your environment details (OS, Node version)
 
 ### Suggesting Features
 

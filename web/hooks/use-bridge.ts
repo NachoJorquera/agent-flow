@@ -6,15 +6,15 @@ import { getActiveBridge } from '@/lib/bridge-runtime'
 import { SimulationEvent } from '@/lib/agent-types'
 
 interface BridgeHookResult {
-  isVSCode: boolean
+  isHosted: boolean
   connectionStatus: ConnectionStatus
-  /** Events received from VS Code extension, converted to SimulationEvent format */
+  /** Events received from the host backend, converted to SimulationEvent format */
   pendingEvents: readonly SimulationEvent[]
   /** Call after consuming events to clear the queue */
   consumeEvents: () => void
   /** Whether to show mock data (standalone mode or explicit config) */
   useMockData: boolean
-  /** Open a file in the VS Code editor */
+  /** Open a file in the host editor */
   bridgeOpenFile: (filePath: string, line?: number) => void
   /** Known sessions from the extension */
   sessions: SessionInfo[]
@@ -33,17 +33,17 @@ interface BridgeHookResult {
 }
 
 /**
- * Connects the VS Code bridge to the React app.
+ * Connects the host bridge to the React app.
  * When running standalone, returns useMockData=true and no events.
- * When inside VS Code, receives events and forwards control commands.
+ * When hosted (Electron), receives events and forwards control commands.
  *
  * Supports multi-session: events are buffered per-session so switching
  * sessions replays the correct event history.
  */
-export function useVSCodeBridge(): BridgeHookResult {
+export function useBridge(): BridgeHookResult {
   const bridge = getActiveBridge()
-  const initialIsConnected = !!bridge && bridge.isVSCode
-  const [isVSCode, setIsVSCode] = useState(initialIsConnected)
+  const initialIsConnected = !!bridge && bridge.isHosted
+  const [isHosted, setIsHosted] = useState(initialIsConnected)
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected')
   const [useMockData, setUseMockData] = useState(!initialIsConnected)
   const pendingEventsRef = useRef<SimulationEvent[]>([])
@@ -61,8 +61,8 @@ export function useVSCodeBridge(): BridgeHookResult {
 
     // Listen for bridge initialization
     const checkInterval = initialIsConnected ? null : setInterval(() => {
-      if (bridge.isVSCode) {
-        setIsVSCode(true)
+      if (bridge.isHosted) {
+        setIsHosted(true)
         setUseMockData(false)
         if (checkInterval) clearInterval(checkInterval)
       }
@@ -74,7 +74,7 @@ export function useVSCodeBridge(): BridgeHookResult {
       if (!bridge.getInitialState) return
       const initialState = await bridge.getInitialState()
       if (!isMounted || !initialState) return
-      setIsVSCode(true)
+      setIsHosted(true)
       setUseMockData(initialState.config.showMockData)
       setConnectionStatus(initialState.connectionStatus)
       setSessions(initialState.sessions)
@@ -276,7 +276,7 @@ export function useVSCodeBridge(): BridgeHookResult {
   }, [bridge])
 
   return {
-    isVSCode,
+    isHosted,
     connectionStatus,
     pendingEvents: pendingEventsRef.current,
     consumeEvents,

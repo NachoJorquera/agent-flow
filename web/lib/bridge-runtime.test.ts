@@ -3,7 +3,7 @@ import { resetBridgeForTests, getActiveBridge, setActiveBridge, type BridgeAdapt
 
 function createBridge(name: string): BridgeAdapter {
   return {
-    isVSCode: true,
+    isHosted: true,
     onEvent: () => () => {},
     onStatus: () => () => {},
     onConfig: () => () => {},
@@ -24,8 +24,10 @@ describe('bridge runtime', () => {
     expect(getActiveBridge()).toBe(bridge)
   })
 
-  it('creates a fallback bridge when window exists', () => {
+  it('creates a standalone fallback bridge when no host is set', () => {
     resetBridgeForTests()
-    expect(getActiveBridge()).toBeTruthy()
+    const fallback = getActiveBridge()
+    expect(fallback).toBeTruthy()
+    expect(fallback!.isHosted).toBe(false)
   })
 })

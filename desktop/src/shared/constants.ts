@@ -1,5 +1,5 @@
 /**
- * Shared constants for the extension.
+ * Shared constants for the desktop app.
  * Centralizes magic numbers and strings scattered across modules.
  */
 
@@ -25,17 +25,6 @@ export const PERMISSION_DETECT_MS = 5000
  *  during long thinking pauses. */
 export const ACTIVE_SESSION_AGE_S = 10 * 60 // 10 minutes
 
-/** Duration of VS Code status bar messages (ms) */
-export const STATUS_MESSAGE_DURATION_MS = 5000
-
-/** Max retries for iframe bridge initialization */
-export const BRIDGE_INIT_MAX_RETRIES = 50
-
-/** Interval between bridge init retries (ms) */
-export const BRIDGE_INIT_RETRY_MS = 100
-
-/** Default dev server port */
-export const DEFAULT_DEV_PORT = 3002
 
 /** Returned by HookServer.start() when the port is already in use by another instance */
 export const HOOK_SERVER_NOT_STARTED = -1
@@ -55,23 +44,6 @@ export const HOOK_FORWARD_TIMEOUT_MS = 1000
 /** Length of workspace hash prefix used in discovery file names */
 export const WORKSPACE_HASH_LENGTH = 16
 
-/** Nonce length for CSP nonce generation */
-export const NONCE_LENGTH = 32
-
-/** Characters used for CSP nonce generation */
-export const NONCE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-
-// ─── Webview Colors ─────────────────────────────────────────────────────────
-
-/** Void background color — matches the web COLORS.void value */
-export const WEBVIEW_BG_COLOR = '#050510'
-
-/** Loading screen text color (dev mode only) */
-export const WEBVIEW_LOADING_TEXT = '#66ccff80'
-
-/** Loading screen dim text color (dev mode only) */
-export const WEBVIEW_LOADING_TEXT_DIM = '#66ccff40'
-
 // ─── Text Truncation Limits ──────────────────────────────────────────────────
 
 /** Tool call preview (tool_call_start preview field) */
@@ -83,7 +55,7 @@ export const ARGS_MAX = 80
 /** Tool result summaries */
 export const RESULT_MAX = 200
 
-/** Message content sent to the webview */
+/** Message content sent to the renderer */
 export const MESSAGE_MAX = 2000
 
 /** Session tab label */

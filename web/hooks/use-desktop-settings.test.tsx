@@ -33,7 +33,7 @@ describe('useDesktopSettings', () => {
       ui: { windowBounds: null },
     }))
     const bridge: BridgeAdapter = {
-      isVSCode: true,
+      isHosted: true,
       onEvent: () => () => {},
       onStatus: () => () => {},
       onConfig: () => () => {},
