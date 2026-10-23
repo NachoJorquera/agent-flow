@@ -1,4 +1,4 @@
-import type { SimulationState } from './types'
+import { shouldFadeOut, type SimulationState } from './types'
 import { TOOL_MIN_DISPLAY_S, TOOL_MAX_RUNNING_S, DISCOVERY_HOLD_S, BUBBLE_VISIBLE_S, MIN_VISIBLE_OPACITY } from '@/lib/canvas-constants'
 
 /** Snap visual properties to their analytically correct values at a given time (used during seek) */
@@ -6,8 +6,8 @@ export function snapVisualState(state: SimulationState, targetTime: number): Sim
 
   const newAgents = new Map(state.agents)
   for (const [id, agent] of newAgents) {
-    if (agent.state === 'complete' && !agent.isMain) {
-      // Remove completed sub-agents entirely during seek
+    if (shouldFadeOut(agent, targetTime)) {
+      // Remove completed sub-agents and expired session roots entirely during seek
       newAgents.delete(id)
       continue
     }

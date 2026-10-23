@@ -63,6 +63,8 @@ export const DISCOVERY_HOLD_S = 8
 export const DISCOVERY_LERP_SPEED = 3
 /** Seconds a message bubble is considered visible (for pruning) */
 export const BUBBLE_VISIBLE_S = 12
+/** Seconds a finished session's root stays on the combined view before fading out */
+export const SESSION_ROOT_LINGER_S = 60
 
 
 // ─── Animation speed multipliers ─────────────────────────────────────────────

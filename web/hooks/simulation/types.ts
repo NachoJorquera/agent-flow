@@ -9,6 +9,7 @@ import type {
   SimulationEvent,
 } from '@/lib/agent-types'
 import type { SimulationNodeDatum, SimulationLinkDatum } from 'd3-force'
+import { SESSION_ROOT_LINGER_S } from '@/lib/canvas-constants'
 
 export interface SimulationState {
   agents: Map<string, Agent>
@@ -88,6 +89,14 @@ export function appendConversation(
 /** Build a deterministic edge ID from two node names */
 export function edgeId(from: string, to: string): string {
   return `edge-${from}-${to}`
+}
+
+/** Whether a completed agent fades out and leaves the graph: sub-agents right away,
+ *  combined-view session roots once they have been finished for SESSION_ROOT_LINGER_S. */
+export function shouldFadeOut(agent: Agent, currentTime: number): boolean {
+  if (agent.state !== 'complete') return false
+  if (!agent.isMain) return true
+  return agent.sessionId !== undefined && currentTime - (agent.completeTime ?? currentTime) >= SESSION_ROOT_LINGER_S
 }
 
 // ── Safe payload extraction helpers ──────────────────────────────────

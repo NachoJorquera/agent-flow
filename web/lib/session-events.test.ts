@@ -1,8 +1,31 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { SimulationEvent } from './agent-types'
 import { processEvent, type ProcessEventContext } from '@/hooks/simulation/process-event'
-import { createEmptyState } from '@/hooks/simulation/types'
+import { computeNextFrame } from '@/hooks/simulation/animate'
+import { snapVisualState } from '@/hooks/simulation/snap-visual-state'
+import { createEmptyState, type SimulationState } from '@/hooks/simulation/types'
 import { scopeSessionEvent } from './session-events'
+
+const quietContext = (): ProcessEventContext => ({
+  syncForceSimulation: () => {},
+  findToolSlot: () => ({ x: 0, y: 0 }),
+  getContextWindowSize: () => 200000,
+  blockIdCounter: { current: 0 },
+  skipForceSync: true,
+})
+
+function emitTo(state: SimulationState, sessionId: string, type: SimulationEvent['type'], payload: Record<string, unknown>) {
+  return processEvent(scopeSessionEvent({ sessionId, type, payload, time: state.currentTime }), state, quietContext())
+}
+
+function advanceSeconds(state: SimulationState, seconds: number) {
+  const options = { useMockData: false, mockScenarioLength: 0, mockScenarioEndTime: 0 }
+  for (let i = 0; i < seconds; i++) {
+    const next = state.currentTime + 1
+    state = computeNextFrame(state, 1, next, next, state, options)
+  }
+  return state
+}
 
 describe('combined session events', () => {
   it('keeps agents, tools, permissions and completion isolated across sessions with the same agent names', () => {
@@ -48,6 +71,36 @@ describe('combined session events', () => {
     expect(state.agents.get(workerB)?.state).toBe('tool_calling')
     expect(Array.from(state.toolCalls.values()).find(tool => tool.agentId === workerB)?.state).toBe('running')
     expect(ctx.syncForceSimulation).not.toHaveBeenCalled()
+  })
+
+  it('removes a finished session root once it has lingered for 60 seconds', () => {
+    let state = emitTo(createEmptyState(), 'a', 'agent_spawn', { name: 'Orchestrator', isMain: true })
+    state = emitTo(state, 'a', 'agent_complete', { name: 'Orchestrator' })
+    const root = JSON.stringify(['a', 'Orchestrator'])
+
+    state = advanceSeconds(state, 59)
+    expect(state.agents.has(root)).toBe(true)
+
+    state = advanceSeconds(state, 5)
+    expect(state.agents.has(root)).toBe(false)
+  })
+
+  it('leaves out session roots that finished over 60 seconds before a seek target', () => {
+    let state = emitTo(createEmptyState(), 'a', 'agent_spawn', { name: 'Orchestrator', isMain: true })
+    state = emitTo(state, 'a', 'agent_complete', { name: 'Orchestrator' })
+
+    expect(snapVisualState(state, 61).agents.has(JSON.stringify(['a', 'Orchestrator']))).toBe(false)
+  })
+
+  it('places a returning session root in a free slot instead of on top of another root', () => {
+    let state = createEmptyState()
+    for (const id of ['a', 'b', 'c']) state = emitTo(state, id, 'agent_spawn', { name: 'Orchestrator', isMain: true })
+    const agents = new Map(state.agents)
+    agents.delete(JSON.stringify(['a', 'Orchestrator']))
+
+    state = emitTo({ ...state, agents }, 'a', 'agent_spawn', { name: 'Orchestrator', isMain: true })
+    const returning = state.agents.get(JSON.stringify(['a', 'Orchestrator']))
+    expect([returning?.x, returning?.y]).toEqual([0, 0])
   })
 
   it('preserves raw events for switching back to session tabs', () => {

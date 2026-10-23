@@ -1,4 +1,4 @@
-import type { SimulationState } from './types'
+import { shouldFadeOut, type SimulationState } from './types'
 import {
   TOOL_MIN_DISPLAY_S, TOOL_MAX_RUNNING_S,
   DISCOVERY_HOLD_S, DISCOVERY_LERP_SPEED,
@@ -23,7 +23,7 @@ function animateAgents(agents: SimulationState['agents'], deltaTime: number, cur
 
     if (agent.state !== 'complete' && opacity < 1) { opacity = Math.min(1, opacity + deltaTime * ANIM_SPEED.agentFadeIn); updated = true }
     if (agent.state !== 'complete' && scale < 1) { scale = Math.min(1, scale + deltaTime * ANIM_SPEED.agentScaleIn); updated = true }
-    if (agent.state === 'complete' && !agent.isMain) {
+    if (shouldFadeOut(agent, currentTime)) {
       if (opacity > 0) { opacity = Math.max(0, opacity - deltaTime * ANIM_SPEED.agentFadeOut); updated = true }
       if (scale > 0.8) { scale = Math.max(0.8, scale - deltaTime * ANIM_SPEED.agentScaleOut); updated = true }
     }
@@ -83,15 +83,16 @@ function cleanupFaded(
   edges: SimulationState['edges'],
   originalAgents: SimulationState['agents'],
   originalToolCalls: SimulationState['toolCalls'],
+  currentTime: number,
 ): { agents: SimulationState['agents']; toolCalls: SimulationState['toolCalls']; edges: SimulationState['edges'] } {
   let newAgents = agents
   let newToolCalls = toolCalls
   let filteredEdges = edges
 
-  // Cleanup faded agents (completed sub-agents) and their edges
+  // Cleanup faded agents (completed sub-agents, expired session roots) and their edges
   const fadedAgentIds: string[] = []
   for (const [id, agent] of newAgents) {
-    if (!agent.isMain && agent.state === 'complete' && agent.opacity <= 0) {
+    if (shouldFadeOut(agent, currentTime) && agent.opacity <= 0) {
       fadedAgentIds.push(id)
     }
   }
@@ -163,7 +164,7 @@ export function computeNextFrame(prev: SimulationState, deltaTime: number, newTi
       const newToolCallsRaw = animateToolCalls(currentState.toolCalls, deltaTime, newTime)
 
       const { agents: newAgents, toolCalls: newToolCalls, edges: filteredEdges } =
-        cleanupFaded(newAgentsRaw, newToolCallsRaw, newEdgesRaw, currentState.agents, currentState.toolCalls)
+        cleanupFaded(newAgentsRaw, newToolCallsRaw, newEdgesRaw, currentState.agents, currentState.toolCalls, currentState.currentTime)
 
       const newDiscoveries = animateDiscoveries(currentState.discoveries, deltaTime, newTime)
       const newParticles = animateParticles(currentState.particles, deltaTime, currentState.speed)
