@@ -24,6 +24,7 @@ interface ElectronAPI {
   onSessionEnded(cb: (sessionId: string) => void): Unsubscribe
   onReset(cb: (reason: string) => void): Unsubscribe
   onConfig(cb: (config: { mode: string; autoPlay: boolean; showMockData: boolean }) => void): Unsubscribe
+  onSettings(cb: (settings: DesktopSettings) => void): Unsubscribe
 }
 
 declare global {
@@ -97,6 +98,10 @@ export class ElectronBridge implements BridgeAdapter {
 
   onSession(callback: SessionCallback): () => void {
     return this.subscribe(this.sessionListeners, callback)
+  }
+
+  onSettings(callback: (settings: DesktopSettings) => void): Unsubscribe {
+    return this.api?.onSettings(callback) ?? (() => {})
   }
 
   async getInitialState(): Promise<DesktopInitialState | null> {

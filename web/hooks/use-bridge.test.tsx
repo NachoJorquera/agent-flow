@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { resetBridgeForTests, setActiveBridge, type BridgeAdapter } from '@/lib/bridge-runtime'
+import { resetBridgeForTests, setActiveBridge, type BridgeAdapter, type EventCallback, type SessionCallback, type DesktopSettings } from '@/lib/bridge-runtime'
 import { useBridge } from './use-bridge'
 
 function HookHarness() {
@@ -15,6 +15,82 @@ function HookHarness() {
 }
 
 describe('useBridge', () => {
+  it('defaults to all sessions and rebuilds only the chosen mode when settings change', () => {
+    resetBridgeForTests()
+    let onEvent: EventCallback = () => {}
+    let onSession: SessionCallback = () => {}
+    let onSettings: (settings: DesktopSettings) => void = () => {}
+    const settings: DesktopSettings = {
+      sessionViewMode: 'overview',
+      claudeProjectsPath: '~/.claude/projects',
+      openFileStrategy: 'auto', editorCommandTemplate: null,
+      hooks: { enabled: false, lastConfiguredAt: null, diagnosticsDismissed: false },
+      ui: { windowBounds: null },
+    }
+    setActiveBridge({
+      isHosted: true,
+      onEvent: cb => { onEvent = cb; return () => {} },
+      onSession: cb => { onSession = cb; return () => {} },
+      onSettings: cb => { onSettings = cb; return () => {} },
+      onStatus: () => () => {}, onConfig: () => () => {}, openFile: () => {}, dispose: () => {},
+    })
+    const { result } = renderHook(() => useBridge())
+    expect(result.current.sessionViewMode).toBe('overview')
+
+    act(() => {
+      onSession('list', [
+        { id: 's1', label: 'One', status: 'active', startTime: 0, lastActivityTime: 2 },
+        { id: 's2', label: 'Two', status: 'active', startTime: 0, lastActivityTime: 1 },
+      ])
+      onEvent({ sessionId: 's1', type: 'agent_spawn', time: 0, payload: { name: 'main' } })
+      onEvent({ sessionId: 's2', type: 'agent_spawn', time: 0, payload: { name: 'main' } })
+    })
+    expect(result.current.pendingEvents.map(event => event.sessionId)).toEqual(['s1', 's2'])
+    expect(result.current.pendingEvents.map(event => event.payload.name)).toEqual(['["s1","main"]', '["s2","main"]'])
+    expect(result.current.sessionsWithActivity.size).toBe(0)
+
+    act(() => { result.current.consumeEvents(); onSettings({ ...settings, sessionViewMode: 'tabs' }) })
+    expect(result.current.sessionViewMode).toBe('tabs')
+    expect(result.current.pendingEvents).toHaveLength(1)
+    expect(result.current.pendingEvents[0]?.payload.name).toBe('main')
+    act(() => result.current.consumeEvents())
+    act(() => onEvent({ sessionId: 's2', type: 'message', time: 1, payload: { agent: 'main', content: 'Background work' } }))
+    expect(result.current.pendingEvents).toHaveLength(0)
+    expect(result.current.sessionsWithActivity.has('s2')).toBe(true)
+
+    act(() => result.current.selectSession('s2'))
+    expect(result.current.pendingEvents).toHaveLength(2)
+    expect(result.current.pendingEvents.every(event => event.sessionId === 's2')).toBe(true)
+    act(() => { result.current.consumeEvents(); onSettings(settings) })
+    expect(result.current.sessionViewMode).toBe('overview')
+    expect(result.current.pendingEvents).toHaveLength(3)
+    expect(result.current.sessionsWithActivity.size).toBe(0)
+    act(() => onSession('started', { id: 's3', label: 'Three', status: 'active', startTime: 2, lastActivityTime: 2 }))
+    expect(result.current.sessionViewMode).toBe('overview')
+    expect(result.current.pendingEvents).toHaveLength(3)
+
+    act(() => onSettings({ ...settings, sessionViewMode: 'tabs' }))
+    act(() => result.current.removeSession('s1'))
+    act(() => onSettings(settings))
+    expect(result.current.pendingEvents).toHaveLength(2)
+    expect(result.current.pendingEvents.every(event => event.sessionId === 's2')).toBe(true)
+
+    act(() => result.current.consumeEvents())
+    act(() => onEvent({ sessionId: 's1', type: 'message', time: 2, payload: { agent: 'main', content: 'Resumed work' } }))
+    expect(result.current.sessions.some(session => session.id === 's1')).toBe(true)
+    expect(result.current.pendingEvents.map(event => event.type)).toEqual(['agent_spawn', 'message'])
+    expect(result.current.pendingEvents.every(event => event.sessionId === 's1')).toBe(true)
+    act(() => result.current.consumeEvents())
+    act(() => onEvent({ sessionId: 's1', type: 'message', time: 3, payload: { agent: 'main', content: 'More work' } }))
+    expect(result.current.pendingEvents).toHaveLength(1)
+
+    act(() => onSession('reset', 'reopened'))
+    expect(result.current.sessionResetVersion).toBe(1)
+    expect(result.current.pendingEvents).toHaveLength(0)
+    act(() => onSettings({ ...settings, sessionViewMode: 'tabs' }))
+    expect(result.current.pendingEvents).toHaveLength(0)
+  })
+
   it('boots from electron snapshot without mock flash and notifies ready', async () => {
     resetBridgeForTests()
     const notifyInitialStateApplied = vi.fn()
@@ -30,6 +106,7 @@ describe('useBridge', () => {
         connectionSource: 'Session watcher',
         config: { mode: 'live', autoPlay: true, showMockData: false },
         desktopSettings: {
+          sessionViewMode: 'tabs',
           claudeProjectsPath: '~/.claude/projects',
           openFileStrategy: 'auto',
           editorCommandTemplate: null,

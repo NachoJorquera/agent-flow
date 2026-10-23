@@ -4,7 +4,7 @@ import {
   emptyContextBreakdown,
 } from '@/lib/agent-types'
 import { COLORS } from '@/lib/colors'
-import { AGENT_SPAWN_DISTANCE } from '@/lib/canvas-constants'
+import { AGENT_SPAWN_DISTANCE, SESSION_LAYOUT } from '@/lib/canvas-constants'
 import { pushTimelineBlock, type ProcessEventContext, type MutableEventState } from './process-event'
 import { edgeId, asString, asBoolean } from './types'
 
@@ -21,6 +21,11 @@ export function handleAgentSpawn(
   const model = typeof payload.model === 'string' ? payload.model : undefined
 
   let x = 0, y = 0
+  if (isMain && typeof payload.sessionId === 'string') {
+    const rootIndex = Array.from(state.agents.values()).filter(agent => agent.isMain && agent.id !== name).length
+    x = (rootIndex % SESSION_LAYOUT.columns) * SESSION_LAYOUT.columnSpacing
+    y = Math.floor(rootIndex / SESSION_LAYOUT.columns) * SESSION_LAYOUT.rowSpacing
+  }
   if (parentId) {
     const parent = state.agents.get(parentId)
     if (parent) {
@@ -59,7 +64,8 @@ export function handleAgentSpawn(
   }
 
   const agent: Agent = {
-    id: name, name, state: 'idle',
+    id: name, name: asString(payload.displayName, name), state: 'idle',
+    sessionId: typeof payload.sessionId === 'string' ? payload.sessionId : undefined,
     parentId: parentId || null,
     tokensUsed: 0, tokensMax: ctx.getContextWindowSize(model),
     contextBreakdown: emptyContextBreakdown(),
@@ -80,7 +86,7 @@ export function handleAgentSpawn(
   const timelineEntry: TimelineEntry = {
     id: `timeline-${name}`,
     agentId: name,
-    agentName: name,
+    agentName: agent.name,
     startTime: currentTime,
     blocks: [],
   }

@@ -34,6 +34,7 @@ class FakeSessionWatcher {
 
 describe('ServiceManager handshake', () => {
   const settings: DesktopSettings = {
+    sessionViewMode: 'overview',
     claudeProjectsPath: '/tmp/claude-projects',
     openFileStrategy: 'auto',
     editorCommandTemplate: null,
@@ -67,5 +68,9 @@ describe('ServiceManager handshake', () => {
 
     watcher.emitEvent({ type: 'agent_idle', time: 2, payload: {}, sessionId: 's1' })
     expect(send).toHaveBeenCalledWith('agent:event', expect.objectContaining({ type: 'agent_idle', sessionId: 's1' }))
+
+    const updatedSettings = manager.updateSettings({ sessionViewMode: 'tabs' })
+    expect(updatedSettings.sessionViewMode).toBe('tabs')
+    expect(send).toHaveBeenCalledWith('settings:updated', updatedSettings)
   })
 })

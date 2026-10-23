@@ -12,7 +12,7 @@ function createBridge(name: string): BridgeAdapter {
     dispose: () => {},
     getInitialState: async () => null,
     notifyInitialStateApplied: () => {},
-    getSettings: async () => ({ claudeProjectsPath: name, openFileStrategy: 'auto', editorCommandTemplate: null, hooks: { enabled: false, lastConfiguredAt: null, diagnosticsDismissed: false }, ui: { windowBounds: null } }),
+    getSettings: async () => ({ sessionViewMode: 'overview', claudeProjectsPath: name, openFileStrategy: 'auto', editorCommandTemplate: null, hooks: { enabled: false, lastConfiguredAt: null, diagnosticsDismissed: false }, ui: { windowBounds: null } }),
   }
 }
 

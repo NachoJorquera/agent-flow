@@ -16,6 +16,9 @@ export const MIN_VISIBLE_OPACITY = 0.05
 
 export const AGENT_SPAWN_DISTANCE = 250
 
+/** Initial separation between independent session roots on the shared canvas. */
+export const SESSION_LAYOUT = { columns: 3, columnSpacing: 480, rowSpacing: 400, labelWidth: 220 } as const
+
 // ─── Tool call dedup window (seconds) ──────────────────────────────────────
 
 export const TOOL_DEDUP_WINDOW_S = 3

@@ -14,6 +14,7 @@ export interface ContextBreakdown {
 
 export interface Agent {
   id: string
+  sessionId?: string
   name: string
   state: AgentState
   parentId: string | null

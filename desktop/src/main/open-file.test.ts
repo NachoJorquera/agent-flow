@@ -3,6 +3,7 @@ import { buildOpenFileAttempts } from './open-file'
 import type { DesktopSettings } from './types'
 
 const baseSettings: DesktopSettings = {
+  sessionViewMode: 'overview',
   claudeProjectsPath: '/tmp/claude-projects',
   openFileStrategy: 'auto',
   editorCommandTemplate: null,

@@ -5,6 +5,7 @@ import { SettingsPanel } from './settings-panel'
 
 function createDesktopBridge() {
   const getSettings = vi.fn(async () => ({
+    sessionViewMode: 'overview' as const,
     claudeProjectsPath: '~/.claude/projects',
     openFileStrategy: 'auto' as const,
     editorCommandTemplate: null,
@@ -12,6 +13,7 @@ function createDesktopBridge() {
     ui: { windowBounds: null },
   }))
   const updateSettings = vi.fn(async (partial) => ({
+    sessionViewMode: partial.sessionViewMode ?? 'overview',
     claudeProjectsPath: partial.claudeProjectsPath ?? '~/.claude/projects',
     openFileStrategy: partial.openFileStrategy ?? 'auto',
     editorCommandTemplate: partial.editorCommandTemplate ?? null,
@@ -56,6 +58,24 @@ function createDesktopBridge() {
 }
 
 describe('SettingsPanel', () => {
+  it('defaults to the combined view and saves or resets the session view preference', async () => {
+    resetBridgeForTests()
+    const { bridge, updateSettings } = createDesktopBridge()
+    setActiveBridge(bridge)
+    render(<SettingsPanel visible onClose={() => {}} />)
+    const selector = await screen.findByLabelText('Session view')
+    await waitFor(() => expect(selector).toBeEnabled())
+    expect(selector).toHaveValue('overview')
+    fireEvent.change(selector, { target: { value: 'tabs' } })
+    fireEvent.click(screen.getByText('Reset local edits'))
+    expect(selector).toHaveValue('overview')
+    fireEvent.change(selector, { target: { value: 'tabs' } })
+    fireEvent.click(screen.getByText('Save settings'))
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({ sessionViewMode: 'tabs' })))
+    await waitFor(() => expect(screen.getByText('Save settings')).toBeDisabled())
+    expect(selector).toHaveValue('tabs')
+  })
+
   it('loads settings and hook status and can save/configure', async () => {
     resetBridgeForTests()
     const { bridge, updateSettings, configureHooks, getHooksStatus, openClaudeSettings } = createDesktopBridge()
