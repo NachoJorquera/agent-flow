@@ -8,20 +8,25 @@ import { AGENT_SPAWN_DISTANCE, SESSION_LAYOUT } from '@/lib/canvas-constants'
 import { pushTimelineBlock, type ProcessEventContext, type MutableEventState } from './process-event'
 import { edgeId, asString, asBoolean } from './types'
 
-/** Position for a combined-view session root: the first grid slot no other root occupies,
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
+
+/** Position of the nth slot on the golden-angle spiral; slot 0 is the origin and no two slots
+ *  are closer than SESSION_LAYOUT.spacing. */
+function rootSlotPosition(slot: number): { x: number; y: number } {
+  const radius = SESSION_LAYOUT.spacing * Math.sqrt(slot)
+  const angle = slot * GOLDEN_ANGLE
+  return { x: radius * Math.cos(angle), y: radius * Math.sin(angle) }
+}
+
+/** Position for a combined-view session root: the first spiral slot no other root occupies,
  *  so a root that returns after fading out never lands on top of another one. */
 function freeRootSlot(agents: Map<string, Agent>, name: string): { x: number; y: number } {
-  const { columns, columnSpacing, rowSpacing } = SESSION_LAYOUT
-  const takenSlots = new Set<number>()
-  for (const agent of agents.values()) {
-    if (!agent.isMain || agent.id === name) continue
-    const column = Math.round(agent.x / columnSpacing)
-    const row = Math.round(agent.y / rowSpacing)
-    if (column >= 0 && column < columns && row >= 0) takenSlots.add(row * columns + column)
-  }
+  const otherRoots = Array.from(agents.values()).filter(agent => agent.isMain && agent.id !== name)
+  const isTaken = (position: { x: number; y: number }) => otherRoots.some(root =>
+    Math.hypot(root.x - position.x, root.y - position.y) < SESSION_LAYOUT.spacing / 2)
   let slot = 0
-  while (takenSlots.has(slot)) slot++
-  return { x: (slot % columns) * columnSpacing, y: Math.floor(slot / columns) * rowSpacing }
+  while (isTaken(rootSlotPosition(slot))) slot++
+  return rootSlotPosition(slot)
 }
 
 export function handleAgentSpawn(

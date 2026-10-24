@@ -103,6 +103,15 @@ describe('combined session events', () => {
     expect([returning?.x, returning?.y]).toEqual([0, 0])
   })
 
+  it('spreads three session roots around the first one instead of along a row', () => {
+    let state = createEmptyState()
+    for (const id of ['a', 'b', 'c']) state = emitTo(state, id, 'agent_spawn', { name: 'Orchestrator', isMain: true })
+    const [first, second, third] = ['a', 'b', 'c'].map(id => state.agents.get(JSON.stringify([id, 'Orchestrator']))!)
+
+    const crossProduct = (second.x - first.x) * (third.y - first.y) - (second.y - first.y) * (third.x - first.x)
+    expect(Math.abs(crossProduct)).toBeGreaterThan(1)
+  })
+
   it('preserves raw events for switching back to session tabs', () => {
     const event: SimulationEvent = {
       sessionId: 'a', time: 0, type: 'agent_spawn',
