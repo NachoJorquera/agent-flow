@@ -4,7 +4,7 @@ export const MODEL_CONTEXT_SIZES: Record<string, number> = {
   'opus-4-6': 1_000_000,
   'sonnet-4-6': 1_000_000,
 }
-export const DEFAULT_CONTEXT_SIZE = 200_000
+export const DEFAULT_CONTEXT_SIZE = 1_000_000
 export const FALLBACK_CONTEXT_SIZE = 1_000_000
 
 // ─── Visibility threshold ───────────────────────────────────────────────────
