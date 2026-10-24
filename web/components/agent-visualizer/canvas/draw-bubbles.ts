@@ -130,7 +130,9 @@ export function wrapText(ctx: CanvasRenderingContext2D, text: string, maxW: numb
         let breakAt = currentLine.length - 1
         while (breakAt > 1 && measureTextCached(ctx, currentLine.slice(0, breakAt)) > maxW) { breakAt-- }
         lines.push(currentLine.slice(0, breakAt))
-        currentLine = leading + currentLine.slice(breakAt)
+        // Re-indent only when the break consumed more than the indentation, so the line always shrinks
+        const rest = currentLine.slice(breakAt)
+        currentLine = breakAt > leading.length ? leading + rest : rest
       }
     }
     if (currentLine) lines.push(currentLine)
