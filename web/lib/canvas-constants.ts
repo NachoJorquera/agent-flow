@@ -102,6 +102,8 @@ export const ANIM_SPEED = {
 export const CAMERA = {
   zoomStepDown: 0.92,
   zoomStepUp: 1.08,
+  /** Zoom factor of one click on the on-screen zoom buttons */
+  zoomButtonStep: 1.25,
   minZoom: 0.2,
   maxZoom: 4,
   velocityScale: 0.016,

@@ -3,8 +3,9 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import { Agent, ToolCallNode, Particle, Edge, Discovery, DepthParticle } from '@/lib/agent-types'
 import { getStateColor } from '@/lib/colors'
-import { ANIM_SPEED } from '@/lib/canvas-constants'
+import { ANIM_SPEED, CAMERA } from '@/lib/canvas-constants'
 import { BloomRenderer } from './bloom-renderer'
+import { ZoomControls } from './zoom-controls'
 import { createDepthParticles, updateDepthParticles, drawBackground } from './background-layer'
 import {
   type VisualEffect,
@@ -86,7 +87,7 @@ export function AgentCanvas({
   // ─── Camera ─────────────────────────────────────────────────────────────
   const {
     transformRef, userHasNavigatedRef, panVelocityRef,
-    screenToCanvas, doZoomToFit, updateCamera,
+    screenToCanvas, doZoomToFit, zoomBy, updateCamera,
   } = useCanvasCamera({
     mainCanvasRef, drawPropsRef, simTimeRef, dimensions,
     agentCount: agents.size, zoomToFitTrigger, selectedAgentId,
@@ -255,6 +256,10 @@ export function AgentCanvas({
         style={{ width: dimensions.width, height: dimensions.height }}
         {...handlers}
         className="w-full h-full"
+      />
+      <ZoomControls
+        onZoomIn={() => zoomBy(CAMERA.zoomButtonStep)}
+        onZoomOut={() => zoomBy(1 / CAMERA.zoomButtonStep)}
       />
     </div>
   )
