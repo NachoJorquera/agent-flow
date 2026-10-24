@@ -1,8 +1,77 @@
 import { ToolCallNode } from '@/lib/agent-types'
 import { COLORS, withAlpha } from '@/lib/colors'
 import { TOOL_MAX_CARD_W, TOOL_DRAW } from '@/lib/canvas-constants'
-import { truncateText } from './draw-misc'
+import { wrapTextCached } from './draw-bubbles'
 import { measureTextCached } from './render-cache'
+
+const LABEL_FONT = `${TOOL_DRAW.fontSize}px monospace`
+const ERROR_FONT = `${TOOL_DRAW.errorFontSize}px monospace`
+const TOKEN_FONT = `${TOOL_DRAW.tokenFontSize}px monospace`
+
+interface ToolCardLayout {
+  cardW: number
+  cardH: number
+  labelLines: string[]
+  /** Wrapped error message, or the token cost line of a completed card */
+  detailLines: string[]
+}
+
+function widestLine(ctx: CanvasRenderingContext2D, lines: string[]): number {
+  return Math.max(0, ...lines.map(line => measureTextCached(ctx, line)))
+}
+
+/** Wraps the card's full text at the max card width and sizes the card to fit it */
+function getToolCardLayout(ctx: CanvasRenderingContext2D, tool: ToolCallNode, isRunning: boolean, isError: boolean): ToolCardLayout {
+  const maxTextW = TOOL_MAX_CARD_W - 12
+  ctx.font = LABEL_FONT
+  const labelLines = wrapTextCached(ctx, isError ? `${tool.toolName}: FAILED` : `${tool.toolName}: ${tool.args}`, maxTextW)
+  let textW = widestLine(ctx, labelLines)
+
+  let detailLines: string[] = []
+  if (isError) {
+    ctx.font = ERROR_FONT
+    detailLines = wrapTextCached(ctx, tool.errorMessage || tool.result || '', maxTextW)
+    textW = Math.max(textW, widestLine(ctx, detailLines))
+  } else if (!isRunning && tool.tokenCost) {
+    detailLines = [`${tool.tokenCost} tok`]
+  }
+
+  const detailH = detailLines.length > 0
+    ? TOOL_DRAW.expandedHeight - TOOL_DRAW.collapsedHeight + (detailLines.length - 1) * TOOL_DRAW.detailLineHeight
+    : 0
+  return {
+    cardW: Math.max(60, Math.min(textW + 12, TOOL_MAX_CARD_W)),
+    cardH: TOOL_DRAW.collapsedHeight + (labelLines.length - 1) * TOOL_DRAW.lineHeight + detailH,
+    labelLines,
+    detailLines,
+  }
+}
+
+/** Draws the label lines and then the detail lines as one block centered on the card */
+function drawToolCardText(ctx: CanvasRenderingContext2D, tool: ToolCallNode, layout: ToolCardLayout, isRunning: boolean, isError: boolean) {
+  const { labelLines, detailLines } = layout
+  const detailBlockH = detailLines.length > 0 ? TOOL_DRAW.detailGap + detailLines.length * TOOL_DRAW.detailLineHeight : 0
+  const contentH = labelLines.length * TOOL_DRAW.lineHeight + detailBlockH
+  let lineY = tool.y - contentH / 2 + TOOL_DRAW.lineHeight / 2
+
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.font = LABEL_FONT
+  ctx.fillStyle = isRunning ? COLORS.tool : isError ? COLORS.error : COLORS.return
+  for (const line of labelLines) {
+    ctx.fillText(line, tool.x, lineY)
+    lineY += TOOL_DRAW.lineHeight
+  }
+
+  if (detailLines.length === 0) return
+  lineY += TOOL_DRAW.detailGap - TOOL_DRAW.lineHeight / 2 + TOOL_DRAW.detailLineHeight / 2
+  ctx.font = isError ? ERROR_FONT : TOKEN_FONT
+  ctx.fillStyle = isError ? COLORS.error + 'aa' : COLORS.tool + '90'
+  for (const line of detailLines) {
+    ctx.fillText(line, tool.x, lineY)
+    lineY += TOOL_DRAW.detailLineHeight
+  }
+}
 
 export function drawToolCalls(
   ctx: CanvasRenderingContext2D,
@@ -18,12 +87,11 @@ export function drawToolCalls(
     ctx.save()
     ctx.globalAlpha = tool.opacity
 
-    ctx.font = `${TOOL_DRAW.fontSize}px monospace`
-    const toolLabel = `${tool.toolName}: ${tool.args}`
-    const label = truncateText(ctx, toolLabel, TOOL_MAX_CARD_W - 12)
-    const textWidth = Math.min(measureTextCached(ctx, label) + 12, TOOL_MAX_CARD_W)
-    const cardW = Math.max(60, textWidth)
-    const cardH = (!isRunning && (tool.tokenCost || isError)) ? TOOL_DRAW.expandedHeight : TOOL_DRAW.collapsedHeight
+    const layout = getToolCardLayout(ctx, tool, isRunning, isError)
+    const { cardW, cardH } = layout
+    // Cache dimensions so hit-detection can use exact same values
+    tool._cachedW = cardW
+    tool._cachedH = cardH
     const cardX = tool.x - cardW / 2
     const cardY = tool.y - cardH / 2
 
@@ -73,32 +141,7 @@ export function drawToolCalls(
       ctx.restore()
     }
 
-    const truncatedLabel = truncateText(ctx, toolLabel, cardW - 8)
-
-    ctx.font = `${TOOL_DRAW.fontSize}px monospace`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-
-    if (isRunning) {
-      ctx.fillStyle = COLORS.tool
-      ctx.fillText(truncatedLabel, tool.x, tool.y)
-    } else if (isError) {
-      ctx.fillStyle = COLORS.error
-      ctx.fillText(truncateText(ctx, `${tool.toolName}: FAILED`, cardW - 8), tool.x, tool.y - TOOL_DRAW.twoLineOffset)
-      ctx.font = `${TOOL_DRAW.errorFontSize}px monospace`
-      ctx.fillStyle = COLORS.error + 'aa'
-      ctx.fillText(truncateText(ctx, tool.errorMessage || tool.result || '', cardW - 8), tool.x, tool.y + TOOL_DRAW.twoLineOffset + 2)
-    } else {
-      // Completed card: show action + file path (most useful info at a glance)
-      ctx.fillStyle = COLORS.return
-      ctx.fillText(truncatedLabel, tool.x, tool.y - TOOL_DRAW.twoLineOffset)
-      if (tool.tokenCost) {
-        // Token cost as dim text below
-        ctx.fillStyle = COLORS.tool + '90'
-        ctx.font = `${TOOL_DRAW.tokenFontSize}px monospace`
-        ctx.fillText(`${tool.tokenCost} tok`, tool.x, tool.y + TOOL_DRAW.twoLineOffset + 2)
-      }
-    }
+    drawToolCardText(ctx, tool, layout, isRunning, isError)
 
     ctx.restore()
   }

@@ -137,3 +137,17 @@ export function wrapText(ctx: CanvasRenderingContext2D, text: string, maxW: numb
   }
   return lines.length > 0 ? lines : ['']
 }
+
+const wrappedLinesCache = new Map<string, string[]>()
+const WRAP_CACHE_MAX = 500
+
+/** wrapText for labels drawn every frame: wraps each font/width/text combination once */
+export function wrapTextCached(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+  const key = `${ctx.font}|${maxW}|${text}`
+  const cached = wrappedLinesCache.get(key)
+  if (cached) return cached
+  const lines = wrapText(ctx, text, maxW)
+  if (wrappedLinesCache.size > WRAP_CACHE_MAX) wrappedLinesCache.clear()
+  wrappedLinesCache.set(key, lines)
+  return lines
+}

@@ -267,8 +267,12 @@ export const TOOL_DRAW = {
   errorFontSize: 6,
   /** Token cost font size */
   tokenFontSize: 6,
-  /** Y offset for two-line card layout */
-  twoLineOffset: 5,
+  /** Line height of the wrapped tool label */
+  lineHeight: 10,
+  /** Line height of the token cost or wrapped error message */
+  detailLineHeight: 8,
+  /** Gap between the tool label and its detail lines */
+  detailGap: 3,
 } as const
 
 // ─── Cost overlay drawing constants ─────────────────────────────────────────
