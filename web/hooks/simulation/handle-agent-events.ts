@@ -8,6 +8,22 @@ import { AGENT_SPAWN_DISTANCE, SESSION_LAYOUT } from '@/lib/canvas-constants'
 import { pushTimelineBlock, type ProcessEventContext, type MutableEventState } from './process-event'
 import { edgeId, asString, asBoolean } from './types'
 
+/** Position for a combined-view session root: the first grid slot no other root occupies,
+ *  so a root that returns after fading out never lands on top of another one. */
+function freeRootSlot(agents: Map<string, Agent>, name: string): { x: number; y: number } {
+  const { columns, columnSpacing, rowSpacing } = SESSION_LAYOUT
+  const takenSlots = new Set<number>()
+  for (const agent of agents.values()) {
+    if (!agent.isMain || agent.id === name) continue
+    const column = Math.round(agent.x / columnSpacing)
+    const row = Math.round(agent.y / rowSpacing)
+    if (column >= 0 && column < columns && row >= 0) takenSlots.add(row * columns + column)
+  }
+  let slot = 0
+  while (takenSlots.has(slot)) slot++
+  return { x: (slot % columns) * columnSpacing, y: Math.floor(slot / columns) * rowSpacing }
+}
+
 export function handleAgentSpawn(
   payload: Record<string, unknown>,
   currentTime: number,
@@ -22,9 +38,9 @@ export function handleAgentSpawn(
 
   let x = 0, y = 0
   if (isMain && typeof payload.sessionId === 'string') {
-    const rootIndex = Array.from(state.agents.values()).filter(agent => agent.isMain && agent.id !== name).length
-    x = (rootIndex % SESSION_LAYOUT.columns) * SESSION_LAYOUT.columnSpacing
-    y = Math.floor(rootIndex / SESSION_LAYOUT.columns) * SESSION_LAYOUT.rowSpacing
+    const slot = freeRootSlot(state.agents, name)
+    x = slot.x
+    y = slot.y
   }
   if (parentId) {
     const parent = state.agents.get(parentId)
