@@ -17,7 +17,7 @@ export const MIN_VISIBLE_OPACITY = 0.05
 export const AGENT_SPAWN_DISTANCE = 250
 
 /** Spiral scale for session roots on the shared canvas: the nth root sits spacing × √n from the origin. */
-export const SESSION_LAYOUT = { spacing: 480, labelWidth: 220 } as const
+export const SESSION_LAYOUT = { spacing: 480 } as const
 
 // ─── Tool call dedup window (seconds) ──────────────────────────────────────
 
@@ -176,8 +176,10 @@ export const AGENT_DRAW = {
   shadowOffsetY: 5,
   /** Agent name label Y offset from agent radius */
   labelYOffset: 8,
-  /** Agent name label width multiplier of radius */
-  labelWidthMultiplier: 3,
+  /** Line height of a wrapped agent name label */
+  labelLineHeight: 12,
+  /** Max width (px) of a wrapped agent, subagent or session name */
+  labelWidth: 80,
   /** Scanline gradient half-height */
   scanlineHalfH: 4,
   /** Scanline width = 2 * scanlineHalfH */

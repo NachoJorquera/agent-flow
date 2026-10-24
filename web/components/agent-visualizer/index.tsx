@@ -51,6 +51,8 @@ function SessionVisualizer({ bridge, onOpenSettings }: {
   const sessionLabels = useMemo(() => isOverview
     ? new Map(bridge.sessions.map(session => [session.id, session.label]))
     : undefined, [isOverview, bridge.sessions])
+  const mainAgentLabel = isOverview ? undefined
+    : bridge.sessions.find(session => session.id === bridge.selectedSessionId)?.label
 
   const {
     agents,
@@ -256,6 +258,7 @@ function SessionVisualizer({ bridge, onOpenSettings }: {
       <AgentCanvas
         agents={agents}
         sessionLabels={sessionLabels}
+        mainAgentLabel={mainAgentLabel}
         toolCalls={toolCalls}
         particles={particles}
         edges={edges}

@@ -25,6 +25,8 @@ import { useCanvasInteraction } from '@/hooks/use-canvas-interaction'
 interface CanvasProps {
   agents: Map<string, Agent>
   sessionLabels?: ReadonlyMap<string, string>
+  /** Label of the main agent in the single-session view, where agents carry no session id */
+  mainAgentLabel?: string
   toolCalls: Map<string, ToolCallNode>
   particles: Particle[]
   edges: Edge[]
@@ -48,7 +50,7 @@ interface CanvasProps {
 }
 
 export function AgentCanvas({
-  agents, sessionLabels, toolCalls, particles, edges, discoveries,
+  agents, sessionLabels, mainAgentLabel, toolCalls, particles, edges, discoveries,
   selectedAgentId, hoveredAgentId, showStats, showHexGrid, zoomToFitTrigger, pauseAutoFit,
   onAgentClick, onAgentHover, onAgentDrag, onContextMenu, onToolCallClick, selectedToolCallId, onDiscoveryClick, selectedDiscoveryId, currentTime: simTime, showCostOverlay,
 }: CanvasProps) {
@@ -70,7 +72,7 @@ export function AgentCanvas({
 
   // ─── Stable refs for animation loop & event handlers ────────────────────
   const makeDrawProps = (prev?: { isDragging: boolean }) => ({
-    agents, sessionLabels, toolCalls, particles, edges, discoveries,
+    agents, sessionLabels, mainAgentLabel, toolCalls, particles, edges, discoveries,
     selectedAgentId, hoveredAgentId, showStats, showHexGrid,
     showCostOverlay, selectedToolCallId, selectedDiscoveryId,
     simTime, pauseAutoFit, dimensions,
@@ -223,7 +225,7 @@ export function AgentCanvas({
     drawEdges(ctx, edges, agents, toolCalls, activeEdgeIds, timeRef.current)
     drawToolCalls(ctx, toolCalls, timeRef.current, selectedToolCallId)
     drawDiscoveries(ctx, discoveries, agents, selectedDiscoveryId)
-    drawAgents(ctx, agents, selectedAgentId, hoveredAgentId, showStats, timeRef.current, drawPropsRef.current.sessionLabels)
+    drawAgents(ctx, agents, selectedAgentId, hoveredAgentId, showStats, timeRef.current, drawPropsRef.current.sessionLabels, drawPropsRef.current.mainAgentLabel)
     drawMessageBubblesWorld(ctx, agents, simTimeRef.current)
     if (showCostOverlay) drawCostLabels(ctx, agents, toolCalls)
     drawParticles(ctx, particles, edgeMap, agents, toolCalls, timeRef.current)
