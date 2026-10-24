@@ -63,7 +63,8 @@ export function SessionTabs({
                 animation: hasActivity && !isSelected ? 'pulse 1.5s infinite' : 'none',
               }}
             />
-            {session.label}
+            {/* The label is the full session name; tabs keep their previous width */}
+            <span className="truncate" style={{ maxWidth: '14ch' }}>{session.label}</span>
             <span
               className="ml-0.5 opacity-0 group-hover:opacity-60 transition-opacity cursor-pointer"
               style={{ color: COLORS.tabClose, fontSize: 8, lineHeight: '10px' }}

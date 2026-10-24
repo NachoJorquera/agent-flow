@@ -13,7 +13,6 @@ import {
 import { readFileChunk } from './fs-utils'
 import {
   PREVIEW_MAX, ARGS_MAX, RESULT_MAX, MESSAGE_MAX,
-  SESSION_LABEL_MAX, SESSION_LABEL_TRUNCATED,
   CHILD_NAME_MAX,
   HASH_PREFIX_MAX,
   ORCHESTRATOR_NAME,
@@ -53,6 +52,12 @@ function safeThinking(block: unknown): string {
   return String(block.thinking || '').trim()
 }
 
+/** Session title from a Claude Code `ai-title` line, or null for any other line */
+function readAiTitle(line: unknown): string | null {
+  if (!isRecord(line) || line.type !== 'ai-title' || typeof line.aiTitle !== 'string') return null
+  return line.aiTitle.trim() || null
+}
+
 export class TranscriptParser {
   /** Per-subagent dedup state for inline progress events, keyed by parentToolUseID */
   private inlineSubagentState = new Map<string, {
@@ -78,6 +83,12 @@ export class TranscriptParser {
     try {
       parsed = JSON.parse(line.trim()) as Record<string, unknown>
     } catch {
+      return
+    }
+
+    const aiTitle = readAiTitle(parsed)
+    if (aiTitle) {
+      if (sessionId) this.applySessionTitle(aiTitle, sessionId)
       return
     }
 
@@ -400,6 +411,12 @@ export class TranscriptParser {
         if (!line.trim()) { continue }
         try {
           const entry = JSON.parse(line.trim()) as TranscriptEntry
+          const aiTitle = readAiTitle(entry)
+          if (aiTitle) {
+            session.label = aiTitle
+            session.labelSet = true
+            continue
+          }
           // Build dedup sets for tool_use blocks and messages + accumulate token counts
           const isUser = entry.message?.role === 'user' || entry.message?.role === 'human'
           if (entry.message && Array.isArray(entry.message.content)) {
@@ -525,7 +542,7 @@ export class TranscriptParser {
       if (entry.type !== 'user') continue
       const text = this.extractUserMessageText(entry)
       if (text) {
-        session.label = this.truncateLabel(text)
+        session.label = this.firstLineLabel(text)
         session.labelSet = true
         return
       }
@@ -557,11 +574,19 @@ export class TranscriptParser {
     return SYSTEM_CONTENT_PREFIXES.some(prefix => text.startsWith(prefix))
   }
 
-  /** Truncate to first line, max chars — fits in a tab */
-  truncateLabel(text: string): string {
-    const firstLine = text.split('\n')[0].trim()
-    if (firstLine.length <= SESSION_LABEL_MAX) return firstLine
-    return firstLine.slice(0, SESSION_LABEL_TRUNCATED) + '..'
+  /** Full first line of a message; the renderer fits it to tabs and the canvas */
+  firstLineLabel(text: string): string {
+    return text.split('\n')[0].trim()
+  }
+
+  /** Use Claude Code's session title as the label; notify the renderer only when it changes */
+  applySessionTitle(title: string, sessionId: string): void {
+    const session = this.delegate.getSession(sessionId)
+    if (!session) return
+    session.labelSet = true
+    if (session.label === title) return
+    session.label = title
+    this.delegate.fireSessionLifecycle({ type: 'updated', sessionId, label: title })
   }
 
   /** Update session label on first user message and notify the renderer */
@@ -571,7 +596,7 @@ export class TranscriptParser {
     if (entry.type !== 'user') return
     const text = this.extractUserMessageText(entry)
     if (!text) return
-    session.label = this.truncateLabel(text)
+    session.label = this.firstLineLabel(text)
     session.labelSet = true
     this.delegate.fireSessionLifecycle({ type: 'updated', sessionId, label: session.label })
   }

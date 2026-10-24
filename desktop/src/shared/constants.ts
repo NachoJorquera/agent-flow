@@ -58,12 +58,6 @@ export const RESULT_MAX = 200
 /** Message content sent to the renderer */
 export const MESSAGE_MAX = 2000
 
-/** Session tab label */
-export const SESSION_LABEL_MAX = 14
-
-/** Truncated label text (label - ellipsis) */
-export const SESSION_LABEL_TRUNCATED = SESSION_LABEL_MAX - 2
-
 /** File path in discovery labels */
 export const DISCOVERY_LABEL_MAX = 40
 
