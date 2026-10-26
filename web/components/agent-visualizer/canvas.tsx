@@ -86,7 +86,7 @@ export function AgentCanvas({
 
   // ─── Camera ─────────────────────────────────────────────────────────────
   const {
-    transformRef, userHasNavigatedRef, panVelocityRef,
+    transformRef, autoFitEnabled, toggleAutoFit, onManualNavigation, panVelocityRef,
     screenToCanvas, doZoomToFit, zoomBy, updateCamera,
   } = useCanvasCamera({
     mainCanvasRef, drawPropsRef, simTimeRef, dimensions,
@@ -97,7 +97,7 @@ export function AgentCanvas({
   const {
     isDragging, handlers, updateDragLerp,
   } = useCanvasInteraction({
-    drawPropsRef, transformRef, userHasNavigatedRef, panVelocityRef,
+    drawPropsRef, transformRef, onManualNavigation, panVelocityRef,
     simTimeRef, screenToCanvas, doZoomToFit, mainCanvasRef,
   })
 
@@ -258,6 +258,8 @@ export function AgentCanvas({
         className="w-full h-full"
       />
       <ZoomControls
+        autoFitEnabled={autoFitEnabled}
+        onToggleAutoFit={toggleAutoFit}
         onZoomIn={() => zoomBy(CAMERA.zoomButtonStep)}
         onZoomOut={() => zoomBy(1 / CAMERA.zoomButtonStep)}
       />
