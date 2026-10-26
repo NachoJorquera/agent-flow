@@ -68,6 +68,9 @@ export interface ToolCallNode {
   startTime: number
   completeTime?: number // when the tool call completed (for minimum display duration)
   opacity: number
+  /** Cached card dimensions (set during draw, used by hit-detection) */
+  _cachedW?: number
+  _cachedH?: number
 }
 
 // Discovery — something the agent found and "pinned"

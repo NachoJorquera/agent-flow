@@ -36,12 +36,13 @@ export function findToolCallAt(
 ): string | null {
   for (const [id, tool] of toolCalls) {
     if (tool.opacity < 0.1) continue
-    // Match the card dimensions from drawToolCalls
+    // Use cached dimensions from the draw pass when available;
+    // fall back to a single-line estimate for the first frame.
     const isRunning = tool.state === 'running'
     const isError = tool.state === 'error'
     const labelLen = (`${tool.toolName}: ${tool.args}`).length * HIT_DETECTION.toolCharWidth + 12
-    const cardW = Math.max(60, Math.min(labelLen, TOOL_MAX_CARD_W))
-    const cardH = (!isRunning && (tool.tokenCost || isError)) ? TOOL_DRAW.expandedHeight : TOOL_DRAW.collapsedHeight
+    const cardW = tool._cachedW ?? Math.max(60, Math.min(labelLen, TOOL_MAX_CARD_W))
+    const cardH = tool._cachedH ?? ((!isRunning && (tool.tokenCost || isError)) ? TOOL_DRAW.expandedHeight : TOOL_DRAW.collapsedHeight)
     const cardX = tool.x - cardW / 2
     const cardY = tool.y - cardH / 2
     if (x >= cardX && x <= cardX + cardW && y >= cardY && y <= cardY + cardH) return id

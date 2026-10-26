@@ -1,10 +1,11 @@
 import { Agent, NODE, ANIM } from '@/lib/agent-types'
 import { COLORS, getStateColor, contextSegments } from '@/lib/colors'
 import {
-  AGENT_DRAW, CONTEXT_BAR, CONTEXT_RING, STATS_OVERLAY, SESSION_LAYOUT,
+  AGENT_DRAW, CONTEXT_BAR, CONTEXT_RING, STATS_OVERLAY,
 } from '@/lib/canvas-constants'
 import { alphaHex, formatTokens } from '@/lib/utils'
-import { truncateText, drawHexagon, CLAUDE_SPARK_D } from './draw-misc'
+import { drawHexagon, CLAUDE_SPARK_D } from './draw-misc'
+import { wrapTextCached } from './draw-bubbles'
 import { getAgentGlowSprite } from './render-cache'
 
 let _claudeSparkPath: Path2D | null = null
@@ -30,6 +31,7 @@ export function drawContextComposition(
   ctx: CanvasRenderingContext2D,
   agent: Agent,
   radius: number,
+  labelOverflowH: number,
 ) {
   const bd = agent.contextBreakdown
   const total = agent.tokensUsed
@@ -38,7 +40,7 @@ export function drawContextComposition(
   const barWidth = Math.max(CONTEXT_BAR.minWidth, radius * CONTEXT_BAR.widthMultiplier)
   const barHeight = CONTEXT_BAR.barHeight
   const barX = agent.x - barWidth / 2
-  const barY = agent.y + radius + CONTEXT_BAR.yOffset
+  const barY = agent.y + radius + CONTEXT_BAR.yOffset + labelOverflowH
 
   // Background
   ctx.fillStyle = COLORS.cardBgDark
@@ -276,14 +278,18 @@ function drawWaitingRipples(ctx: CanvasRenderingContext2D, agent: Agent, r: numb
   }
 }
 
-function drawAgentLabel(ctx: CanvasRenderingContext2D, agent: Agent, r: number, isHovered: boolean, sessionLabel?: string) {
+/** Draws the full agent name wrapped below the node; returns the height its extra lines take */
+function drawAgentLabel(ctx: CanvasRenderingContext2D, agent: Agent, r: number, isHovered: boolean, sessionLabel?: string): number {
   ctx.fillStyle = isHovered ? COLORS.textPrimary : COLORS.textDim
   ctx.font = '10px monospace'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
-  const maxLabelW = sessionLabel ? SESSION_LAYOUT.labelWidth : r * AGENT_DRAW.labelWidthMultiplier
-  const agentLabel = truncateText(ctx, sessionLabel ?? agent.name, maxLabelW)
-  ctx.fillText(agentLabel, agent.x, agent.y + r + AGENT_DRAW.labelYOffset)
+  const lines = wrapTextCached(ctx, sessionLabel ?? agent.name, AGENT_DRAW.labelWidth)
+  const top = agent.y + r + AGENT_DRAW.labelYOffset
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], agent.x, top + i * AGENT_DRAW.labelLineHeight)
+  }
+  return (lines.length - 1) * AGENT_DRAW.labelLineHeight
 }
 
 function drawStatsOverlay(ctx: CanvasRenderingContext2D, agent: Agent, r: number) {
@@ -310,6 +316,7 @@ export function drawAgents(
   showStats: boolean,
   time: number,
   sessionLabels?: ReadonlyMap<string, string>,
+  mainAgentLabel?: string,
 ) {
   for (const [id, agent] of agents) {
     const radius = agent.isMain ? NODE.radiusMain : NODE.radiusSub
@@ -344,14 +351,17 @@ export function drawAgents(
       drawWaitingRipples(ctx, agent, r, color, time)
     }
 
-    drawAgentLabel(ctx, agent, r, isHovered, agent.isMain && agent.sessionId ? sessionLabels?.get(agent.sessionId) : undefined)
+    // Overview roots carry their session id; the single-session view has one unscoped main agent
+    const sessionLabel = !agent.isMain ? undefined
+      : agent.sessionId ? sessionLabels?.get(agent.sessionId) : mainAgentLabel
+    const labelOverflowH = drawAgentLabel(ctx, agent, r, isHovered, sessionLabel)
 
     // Context composition — ring for main agent, bar for sub-agents
     if (agent.state !== 'complete' || agent.opacity > 0.5) {
       if (agent.isMain) {
         drawContextRing(ctx, agent, r, time)
       }
-      drawContextComposition(ctx, agent, r)
+      drawContextComposition(ctx, agent, r, labelOverflowH)
     }
 
     if (showStats && agent.state !== 'complete') {

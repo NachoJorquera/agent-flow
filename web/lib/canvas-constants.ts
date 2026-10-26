@@ -4,7 +4,7 @@ export const MODEL_CONTEXT_SIZES: Record<string, number> = {
   'opus-4-6': 1_000_000,
   'sonnet-4-6': 1_000_000,
 }
-export const DEFAULT_CONTEXT_SIZE = 200_000
+export const DEFAULT_CONTEXT_SIZE = 1_000_000
 export const FALLBACK_CONTEXT_SIZE = 1_000_000
 
 // ─── Visibility threshold ───────────────────────────────────────────────────
@@ -16,8 +16,8 @@ export const MIN_VISIBLE_OPACITY = 0.05
 
 export const AGENT_SPAWN_DISTANCE = 250
 
-/** Initial separation between independent session roots on the shared canvas. */
-export const SESSION_LAYOUT = { columns: 3, columnSpacing: 480, rowSpacing: 400, labelWidth: 220 } as const
+/** Spiral scale for session roots on the shared canvas: the nth root sits spacing × √n from the origin. */
+export const SESSION_LAYOUT = { spacing: 480 } as const
 
 // ─── Tool call dedup window (seconds) ──────────────────────────────────────
 
@@ -102,6 +102,8 @@ export const ANIM_SPEED = {
 export const CAMERA = {
   zoomStepDown: 0.92,
   zoomStepUp: 1.08,
+  /** Zoom factor of one click on the on-screen zoom buttons */
+  zoomButtonStep: 1.25,
   minZoom: 0.2,
   maxZoom: 4,
   velocityScale: 0.016,
@@ -176,8 +178,10 @@ export const AGENT_DRAW = {
   shadowOffsetY: 5,
   /** Agent name label Y offset from agent radius */
   labelYOffset: 8,
-  /** Agent name label width multiplier of radius */
-  labelWidthMultiplier: 3,
+  /** Line height of a wrapped agent name label */
+  labelLineHeight: 12,
+  /** Max width (px) of a wrapped agent, subagent or session name */
+  labelWidth: 80,
   /** Scanline gradient half-height */
   scanlineHalfH: 4,
   /** Scanline width = 2 * scanlineHalfH */
@@ -267,8 +271,12 @@ export const TOOL_DRAW = {
   errorFontSize: 6,
   /** Token cost font size */
   tokenFontSize: 6,
-  /** Y offset for two-line card layout */
-  twoLineOffset: 5,
+  /** Line height of the wrapped tool label */
+  lineHeight: 10,
+  /** Line height of the token cost or wrapped error message */
+  detailLineHeight: 8,
+  /** Gap between the tool label and its detail lines */
+  detailGap: 3,
 } as const
 
 // ─── Cost overlay drawing constants ─────────────────────────────────────────
