@@ -30,6 +30,7 @@ export interface AgentEvent {
 
 export interface SessionInfo {
   id: string
+  provider?: 'claude' | 'codex'
   label: string
   status: 'active' | 'completed'
   startTime: number
@@ -87,6 +88,7 @@ export interface ToolUseBlock {
 export interface ToolResultBlock {
   type: 'tool_result'
   tool_use_id: string
+  is_error?: boolean
   content: string | Array<{ text?: string; type?: string }>
 }
 
@@ -127,6 +129,7 @@ export function emitSubagentSpawn(
   child: string,
   task: string,
   sessionId?: string,
+  metadata?: { provider?: 'claude' | 'codex'; model?: string },
 ): void {
   emitter.emit({
     time: emitter.elapsed(sessionId),
@@ -136,7 +139,7 @@ export function emitSubagentSpawn(
   emitter.emit({
     time: emitter.elapsed(sessionId),
     type: 'agent_spawn',
-    payload: { name: child, parent, task },
+    payload: { name: child, parent, task, ...metadata },
   }, sessionId)
 }
 
@@ -156,6 +159,7 @@ export interface SubagentState {
   watcher: import('fs').FSWatcher | null
   fileSize: number
   agentName: string
+  model?: string
   pendingToolCalls: Map<string, PendingToolCall>
   seenToolUseIds: Set<string>
   permissionTimer: NodeJS.Timeout | null

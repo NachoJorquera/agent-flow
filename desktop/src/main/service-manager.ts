@@ -2,6 +2,8 @@ import { BrowserWindow, shell } from 'electron'
 import { HookServer } from '../shared/hook-server'
 import { AgentEvent, SessionInfo } from '../shared/protocol'
 import { SessionWatcher } from '../shared/session-watcher'
+import { CodexSessionWatcher } from '../shared/codex-session-watcher'
+import type { SessionSource } from '../shared/session-source'
 import { routeIncomingHookEvent } from '../shared/event-dedup'
 import {
   ensureHookScript,
@@ -27,12 +29,14 @@ interface ManagedWindow {
 
 interface ServiceManagerDeps {
   sessionWatcher?: SessionWatcher
+  codexSessionWatcher?: SessionSource
   powerSave?: PowerSaveManager
   hookServerFactory?: () => HookServer
 }
 
 export class ServiceManager {
   private readonly sessionWatcher: SessionWatcher
+  private readonly sessionSources: SessionSource[]
   private hookServer: HookServer | null = null
   private hookPort: number | null = null
   private readonly windows = new Map<number, ManagedWindow>()
@@ -43,37 +47,40 @@ export class ServiceManager {
 
   constructor(private readonly settingsStore: SettingsStore, deps: ServiceManagerDeps = {}) {
     this.sessionWatcher = deps.sessionWatcher ?? new SessionWatcher({ claudeDir: this.settingsStore.get().claudeProjectsPath })
+    this.sessionSources = [this.sessionWatcher, deps.codexSessionWatcher ?? new CodexSessionWatcher()]
     this.powerSave = deps.powerSave ?? new PowerSaveManager()
     this.hookServerFactory = deps.hookServerFactory ?? (() => new HookServer())
   }
 
   async start(): Promise<void> {
-    this.sessionWatcher.onEvent((event) => {
-      this.broadcast('agent:event', event)
-    })
-    this.sessionWatcher.onSessionDetected((_sessionId) => {
-      this.connectionStatus = 'watching'
-      this.connectionSource = this.hookPort ? `Hooks :${this.hookPort} + session watcher` : 'Session watcher'
-      this.broadcast('connection:status', this.connectionStatus, this.connectionSource)
-    })
-    this.sessionWatcher.onSessionLifecycle((lifecycle) => {
-      this.updatePowerSaveState()
-      if (lifecycle.type === 'started') {
-        const session = this.sessionWatcher.getActiveSessions().find(s => s.id === lifecycle.sessionId) ?? {
-          id: lifecycle.sessionId,
-          label: lifecycle.label,
-          status: 'active' as const,
-          startTime: Date.now(),
-          lastActivityTime: Date.now(),
+    for (const source of this.sessionSources) {
+      source.onEvent((event) => {
+        this.broadcast('agent:event', event)
+      })
+      source.onSessionDetected((_sessionId) => {
+        this.connectionStatus = 'watching'
+        this.connectionSource = this.hookPort ? `Hooks :${this.hookPort} + session watcher` : 'Session watcher'
+        this.broadcast('connection:status', this.connectionStatus, this.connectionSource)
+      })
+      source.onSessionLifecycle((lifecycle) => {
+        this.updatePowerSaveState()
+        if (lifecycle.type === 'started') {
+          const session = source.getActiveSessions().find(s => s.id === lifecycle.sessionId) ?? {
+            id: lifecycle.sessionId,
+            label: lifecycle.label,
+            status: 'active' as const,
+            startTime: Date.now(),
+            lastActivityTime: Date.now(),
+          }
+          this.broadcast('sessions:started', session)
+        } else if (lifecycle.type === 'updated') {
+          this.broadcast('sessions:updated', { sessionId: lifecycle.sessionId, label: lifecycle.label })
+        } else {
+          this.broadcast('sessions:ended', lifecycle.sessionId)
         }
-        this.broadcast('sessions:started', session)
-      } else if (lifecycle.type === 'updated') {
-        this.broadcast('sessions:updated', { sessionId: lifecycle.sessionId, label: lifecycle.label })
-      } else {
-        this.broadcast('sessions:ended', lifecycle.sessionId)
-      }
-    })
-    this.sessionWatcher.start()
+      })
+      source.start()
+    }
     this.updatePowerSaveState()
 
     if (this.settingsStore.get().hooks.enabled) {
@@ -86,7 +93,7 @@ export class ServiceManager {
     this.hookServer?.dispose()
     this.hookServer = null
     this.hookPort = null
-    this.sessionWatcher.dispose()
+    for (const source of this.sessionSources) source.dispose()
     this.powerSave.dispose()
   }
 
@@ -108,13 +115,18 @@ export class ServiceManager {
     managed.state = 'snapshot-applied'
     managed.win.webContents.send('app:beginReplay')
     managed.state = 'replaying'
-    const activeSessionIds = this.sessionWatcher.getActiveSessions().map(s => s.id)
-    for (const replayEvent of this.sessionWatcher.buildReplayStartEvents(activeSessionIds)) {
-      managed.win.webContents.send('agent:event', { ...replayEvent.event, sessionId: replayEvent.sessionId })
+    const replayedPayloads = new Set<AgentEvent['payload']>()
+    for (const source of this.sessionSources) {
+      for (const replayEvent of source.buildReplayStartEvents()) {
+        replayedPayloads.add(replayEvent.event.payload)
+        managed.win.webContents.send('agent:event', { ...replayEvent.event, sessionId: replayEvent.sessionId })
+      }
     }
     managed.win.webContents.send('app:replayComplete')
     managed.state = 'live-ready'
     for (const buffered of managed.buffer) {
+      // A provider may retain history that already includes events buffered during bootstrap.
+      if (buffered.channel === 'agent:event' && replayedPayloads.has((buffered.args[0] as AgentEvent).payload)) continue
       managed.win.webContents.send(buffered.channel, ...buffered.args)
     }
     managed.buffer.length = 0
@@ -125,7 +137,7 @@ export class ServiceManager {
     return {
       connectionStatus: this.connectionStatus,
       connectionSource: this.connectionSource,
-      sessions: this.sessionWatcher.getActiveSessions(),
+      sessions: this.sessionSources.flatMap(source => source.getActiveSessions()),
       config,
       desktopSettings: this.settingsStore.get(),
     }
@@ -171,7 +183,7 @@ export class ServiceManager {
   }
 
   forceImmediateScan(): void {
-    this.sessionWatcher.forceScan()
+    for (const source of this.sessionSources) source.forceScan()
   }
 
   private async startHooks(): Promise<void> {
@@ -207,7 +219,7 @@ export class ServiceManager {
   }
 
   private updatePowerSaveState(): void {
-    const activeCount = this.sessionWatcher.getActiveSessions().filter((s: SessionInfo) => s.status === 'active').length
+    const activeCount = this.sessionSources.flatMap(source => source.getActiveSessions()).filter((s: SessionInfo) => s.status === 'active').length
     this.powerSave.update(activeCount)
   }
 }

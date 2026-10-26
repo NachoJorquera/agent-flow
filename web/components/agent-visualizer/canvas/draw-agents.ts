@@ -4,7 +4,7 @@ import {
   AGENT_DRAW, CONTEXT_BAR, CONTEXT_RING, STATS_OVERLAY,
 } from '@/lib/canvas-constants'
 import { alphaHex, formatTokens } from '@/lib/utils'
-import { truncateText, drawHexagon, CLAUDE_SPARK_D } from './draw-misc'
+import { truncateText, drawHexagon, CLAUDE_SPARK_D, OPENAI_LOGO_D } from './draw-misc'
 import { getAgentGlowSprite } from './render-cache'
 
 let _claudeSparkPath: Path2D | null = null
@@ -23,6 +23,22 @@ export function drawClaudeSpark(ctx: CanvasRenderingContext2D, cx: number, cy: n
   ctx.shadowColor = color
   ctx.shadowBlur = 6 / scale
   ctx.fill(getClaudeSparkPath())
+  ctx.restore()
+}
+
+let openAILogoPath: Path2D | null = null
+
+function drawOpenAILogo(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string) {
+  if (!openAILogoPath) openAILogoPath = new Path2D(OPENAI_LOGO_D)
+  ctx.save()
+  ctx.translate(cx, cy)
+  const scale = (r * AGENT_DRAW.sparkScale) / 12
+  ctx.scale(scale, scale)
+  ctx.translate(-12, -12)
+  ctx.fillStyle = color
+  ctx.shadowColor = color
+  ctx.shadowBlur = 6 / scale
+  ctx.fill(openAILogoPath)
   ctx.restore()
 }
 
@@ -224,8 +240,12 @@ function drawCenterIcon(ctx: CanvasRenderingContext2D, agent: Agent, r: number, 
     ctx.arc(agent.x, agent.y - s * 0.15, s * 0.4, Math.PI, 0)
     ctx.stroke()
     ctx.restore()
-  } else if (agent.isMain) {
-    drawClaudeSpark(ctx, agent.x, agent.y, r, color + '90')
+  } else if (agent.isMain || agent.provider) {
+    if (agent.provider === 'codex') {
+      drawOpenAILogo(ctx, agent.x, agent.y, r, color + '90')
+    } else {
+      drawClaudeSpark(ctx, agent.x, agent.y, r, color + '90')
+    }
   } else {
     ctx.fillStyle = color + '90'
     ctx.font = `${r * AGENT_DRAW.subIconScale}px monospace`

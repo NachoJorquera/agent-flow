@@ -25,6 +25,8 @@ import {
 import { summarizeInput, summarizeResult, extractInputData, detectError, buildDiscovery } from './tool-summarizer'
 import { estimateTokensFromContent, estimateTokensFromText } from './token-estimator'
 import { createLogger } from './logger'
+import { DelegationTracker } from './delegation-tracker'
+import { agentProvider } from './agent-provider'
 
 const log = createLogger('TranscriptParser')
 
@@ -63,8 +65,27 @@ export class TranscriptParser {
   }>()
   /** Maps Agent tool_use ID → resolved child agent name (set in handleToolUse) */
   private subagentChildNames = new Map<string, string>()
+  private readonly agentModels = new Map<string, string>()
+  private readonly delegations = new Map<string, DelegationTracker>()
 
   constructor(private delegate: TranscriptParserDelegate) {}
+
+  private tracker(sessionId?: string): DelegationTracker {
+    const key = sessionId ?? ''
+    let tracker = this.delegations.get(key)
+    if (!tracker) {
+      tracker = new DelegationTracker({
+        emit: event => this.delegate.emit(event, sessionId),
+        elapsed: () => this.delegate.elapsed(sessionId),
+      }, 'claude')
+      this.delegations.set(key, tracker)
+    }
+    return tracker
+  }
+
+  buildDelegationReplayEvents(sessionId: string): AgentEvent[] {
+    return this.delegations.get(sessionId)?.replayEvents() ?? []
+  }
 
   processTranscriptLine(
     line: string,
@@ -112,13 +133,19 @@ export class TranscriptParser {
 
     const session = sessionId ? this.delegate.getSession(sessionId) : undefined
 
-    // Extract model from assistant messages (updates tokensMax on the frontend)
-    if (session && !session.model && entry.type === 'assistant' && msg.model) {
-      session.model = msg.model
+    const texts = typeof msg.content === 'string' ? [msg.content]
+      : Array.isArray(msg.content) ? msg.content.filter(block => block.type === 'text').map(block => safeText(block)) : []
+    for (const text of texts) this.tracker(sessionId).observeText(text.trim())
+
+    // Models belong to each agent; a child must not overwrite its parent's model.
+    const modelKey = `${sessionId ?? ''}:${agentName}`
+    if (entry.type === 'assistant' && msg.model && this.agentModels.get(modelKey) !== msg.model) {
+      this.agentModels.set(modelKey, msg.model)
+      if (session && agentName === ORCHESTRATOR_NAME) session.model = msg.model
       this.delegate.emit({
         time: this.delegate.elapsed(sessionId),
         type: 'model_detected',
-        payload: { agent: agentName, model: msg.model },
+        payload: { agent: agentName, model: msg.model, provider: agentProvider(msg.model) ?? 'claude' },
       }, sessionId)
     }
 
@@ -251,9 +278,12 @@ export class TranscriptParser {
       const session = sessionId ? this.delegate.getSession(sessionId) : undefined
       if (!session?.spawnedSubagents.has(childName)) {
         session?.spawnedSubagents.add(childName)
-        emitSubagentSpawn(this.delegate, agentName, childName, args, sessionId)
+        const model = typeof block.input.model === 'string' ? block.input.model : undefined
+        emitSubagentSpawn(this.delegate, agentName, childName, args, sessionId, { model, provider: agentProvider(model) ?? 'claude' })
       }
     }
+
+    this.tracker(sessionId).start(block.id, toolName, block.input, agentName)
 
     this.delegate.emit({
       time: this.delegate.elapsed(sessionId),
@@ -274,6 +304,7 @@ export class TranscriptParser {
     ctxPending: Map<string, PendingToolCall>,
     sessionId?: string,
   ): void {
+    this.tracker(sessionId).result(block.tool_use_id, block.content, block.is_error)
     const pending = ctxPending.get(block.tool_use_id)
     // Skip orphaned tool_results (their tool_use was deduped during catch-up)
     if (!pending) { return }
@@ -400,6 +431,21 @@ export class TranscriptParser {
         if (!line.trim()) { continue }
         try {
           const entry = JSON.parse(line.trim()) as TranscriptEntry
+          const tracker = this.tracker(session.sessionId)
+          tracker.silently(() => {
+            const content = entry.message?.content
+            if (typeof content === 'string') tracker.observeText(content.trim())
+            if (!Array.isArray(content)) return
+            for (const block of content) {
+              if (block.type === 'tool_use') {
+                const tool = block as ToolUseBlock
+                tracker.start(tool.id, tool.name, tool.input, ORCHESTRATOR_NAME)
+              } else if (block.type === 'tool_result') {
+                const result = block as ToolResultBlock
+                tracker.result(result.tool_use_id, result.content, result.is_error)
+              } else if (block.type === 'text') tracker.observeText(safeText(block))
+            }
+          })
           // Build dedup sets for tool_use blocks and messages + accumulate token counts
           const isUser = entry.message?.role === 'user' || entry.message?.role === 'human'
           if (entry.message && Array.isArray(entry.message.content)) {

@@ -177,6 +177,7 @@ export class HookServer implements Disposable {
       payload: {
         name: ORCHESTRATOR_NAME,
         isMain: true,
+        provider: 'claude',
         task: `Session ${payload.session_id.slice(0, SESSION_ID_DISPLAY)}`,
       },
     }, payload.session_id)
@@ -253,6 +254,7 @@ export class HookServer implements Disposable {
     emitSubagentSpawn(
       { emit: (e, s) => this.emit(e, s), elapsed: (s) => this.elapsedSeconds(s) },
       parentName, childName, agentType, payload.session_id,
+      { provider: 'claude', model: typeof payload.model === 'string' ? payload.model : undefined },
     )
   }
 
