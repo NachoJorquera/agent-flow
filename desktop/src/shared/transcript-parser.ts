@@ -5,6 +5,7 @@
  * keeping the parsing logic decoupled from file-watching concerns.
  */
 
+import * as fs from 'fs'
 import {
   AgentEvent, PendingToolCall, WatchedSession,
   TranscriptEntry, ToolUseBlock, ToolResultBlock,
@@ -12,6 +13,7 @@ import {
 } from './protocol'
 import { readFileChunk } from './fs-utils'
 import {
+  CLOSED_SESSION_TAIL_BYTES,
   PREVIEW_MAX, ARGS_MAX, RESULT_MAX, MESSAGE_MAX,
   CHILD_NAME_MAX,
   HASH_PREFIX_MAX,
@@ -56,6 +58,32 @@ function safeThinking(block: unknown): string {
 function readAiTitle(line: unknown): string | null {
   if (!isRecord(line) || line.type !== 'ai-title' || typeof line.aiTitle !== 'string') return null
   return line.aiTitle.trim() || null
+}
+
+/** Top-level `type` of a raw JSONL line, or undefined for a blank or partial line */
+function readLineType(line: string): unknown {
+  try {
+    const parsed: unknown = JSON.parse(line)
+    return isRecord(parsed) ? parsed.type : undefined
+  } catch { return undefined /* expected for the cut first line of a tail read */ }
+}
+
+/** Whether the Claude Code process behind a transcript has exited: its last `cost-state`
+ *  line, written on exit, has no user or assistant line after it. Reads only the file tail. */
+export function isClosedTranscript(filePath: string): boolean {
+  let lines: string[]
+  try {
+    const size = fs.statSync(filePath).size
+    const offset = Math.max(0, size - CLOSED_SESSION_TAIL_BYTES)
+    lines = readFileChunk(filePath, offset, size - offset).split('\n')
+    if (offset > 0) lines.shift()
+  } catch { return false /* expected if the file was removed mid-scan */ }
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const type = readLineType(lines[index])
+    if (type === 'cost-state') return true
+    if (type === 'user' || type === 'assistant') return false
+  }
+  return false
 }
 
 export class TranscriptParser {

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { SessionWatcher } from './session-watcher'
@@ -59,5 +60,21 @@ describe('SessionWatcher', () => {
     watcher.forceScan()
     expect(scanSpy).toHaveBeenCalled()
     watcher.dispose()
+  })
+
+  it('does not load a recent transcript whose Claude Code process already exited', () => {
+    const claudeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-flow-watcher-scan-'))
+    const projectDir = path.join(claudeDir, '-Users-dev-project')
+    fs.mkdirSync(projectDir)
+    const userLine = JSON.stringify({ type: 'user', message: { role: 'user', content: 'Revisa el PR' } })
+    fs.writeFileSync(path.join(projectDir, 'live-session.jsonl'), `${userLine}\n`)
+    fs.writeFileSync(path.join(projectDir, 'closed-session.jsonl'), `${userLine}\n${JSON.stringify({ type: 'cost-state' })}\n`)
+
+    const watcher = new SessionWatcher({ claudeDir, enableGlobalRootWatch: false })
+    watcher.forceScan()
+
+    expect(watcher.getActiveSessions().map(session => session.id)).toEqual(['live-session'])
+    watcher.dispose()
+    fs.rmSync(claudeDir, { recursive: true, force: true })
   })
 })
