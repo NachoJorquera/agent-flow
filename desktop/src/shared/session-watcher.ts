@@ -6,7 +6,7 @@ import {
   INACTIVITY_TIMEOUT_MS, SCAN_INTERVAL_MS, ACTIVE_SESSION_AGE_S, POLL_FALLBACK_MS,
   SESSION_ID_DISPLAY, SYSTEM_PROMPT_BASE_TOKENS, ORCHESTRATOR_NAME,
 } from './constants'
-import { TranscriptParser } from './transcript-parser'
+import { TranscriptParser, isClosedTranscript } from './transcript-parser'
 import { readNewFileLines } from './fs-utils'
 import { handlePermissionDetection } from './permission-detection'
 import { scanSubagentsDir, readSubagentNewLines } from './subagent-watcher'
@@ -229,6 +229,8 @@ export class SessionWatcher implements Disposable {
       // Start watching any new active files
       for (const af of activeFiles) {
         if (!this.sessions.has(af.sessionId)) {
+          // Recently written but already exited: nothing live to show
+          if (isClosedTranscript(af.filePath)) { continue }
           log.info(`Active session found: ${af.filePath}`)
           this.watchSession(af.sessionId, af.filePath)
         } else {
