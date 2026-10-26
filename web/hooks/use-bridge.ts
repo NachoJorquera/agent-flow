@@ -2,10 +2,13 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import type { ConnectionStatus, AgentEvent, SessionInfo } from '@/lib/bridge-types'
-import { getActiveBridge } from '@/lib/bridge-runtime'
+import { getActiveBridge, type SessionViewMode } from '@/lib/bridge-runtime'
 import { SimulationEvent } from '@/lib/agent-types'
+import { scopeSessionEvent } from '@/lib/session-events'
 
 interface BridgeHookResult {
+  sessionViewMode: SessionViewMode
+  sessionResetVersion: number
   isHosted: boolean
   connectionStatus: ConnectionStatus
   /** Events received from the host backend, converted to SimulationEvent format */
@@ -55,6 +58,31 @@ export function useBridge(): BridgeHookResult {
   const selectedSessionIdRef = useRef<string | null>(null)
   const sessionEventsRef = useRef<Map<string, SimulationEvent[]>>(new Map())
   const [sessionsWithActivity, setSessionsWithActivity] = useState<Set<string>>(new Set())
+  const dismissedSessionsRef = useRef<Map<string, SessionInfo>>(new Map())
+  const [sessionResetVersion, setSessionResetVersion] = useState(0)
+  const [sessionViewMode, setSessionViewMode] = useState<SessionViewMode>('overview')
+  const sessionViewModeRef = useRef<SessionViewMode>('overview')
+
+  const applySessionViewMode = useCallback((mode: SessionViewMode) => {
+    if (sessionViewModeRef.current === mode) return
+    sessionViewModeRef.current = mode
+    // The renderer remounts its single simulation when the mode changes.
+    // Rebuild its queue from the existing raw event history, without keeping
+    // another simulation or a second set of session snapshots alive.
+    pendingEventsRef.current.length = 0
+    if (mode === 'overview') {
+      const events = Array.from(sessionEventsRef.current.entries())
+        .filter(([sessionId]) => !dismissedSessionsRef.current.has(sessionId))
+        .flatMap(([, events]) => events)
+      events.sort((a, b) => a.time - b.time)
+      for (const event of events) pendingEventsRef.current.push(scopeSessionEvent(event))
+      setSessionsWithActivity(new Set())
+    } else if (selectedSessionIdRef.current) {
+      const events = sessionEventsRef.current.get(selectedSessionIdRef.current) ?? []
+      for (const event of events) pendingEventsRef.current.push(event)
+    }
+    setSessionViewMode(mode)
+  }, [])
 
   useEffect(() => {
     if (!bridge) { return }
@@ -78,6 +106,7 @@ export function useBridge(): BridgeHookResult {
       setUseMockData(initialState.config.showMockData)
       setConnectionStatus(initialState.connectionStatus)
       setSessions(initialState.sessions)
+      applySessionViewMode(initialState.desktopSettings.sessionViewMode === 'tabs' ? 'tabs' : 'overview')
       if (!selectedSessionIdRef.current && initialState.sessions.length > 0) {
         const sorted = [...initialState.sessions].sort((a, b) => {
           const aActive = a.status === 'active' ? 1 : 0
@@ -114,8 +143,17 @@ export function useBridge(): BridgeHookResult {
 
       // Deliver to pending if session matches (ref is always current)
       const selected = selectedSessionIdRef.current
-      if (selected && event.sessionId === selected) {
-        pendingEventsRef.current.push(simEvent)
+      if (sessionViewModeRef.current === 'overview' || (selected && event.sessionId === selected)) {
+        if (sessionViewModeRef.current === 'overview') {
+          // A closed tab was omitted when entering the overview. Recreate its
+          // agents before delivering the event that makes the session visible again.
+          const events = event.sessionId && dismissedSessionsRef.current.has(event.sessionId)
+            ? sessionEventsRef.current.get(event.sessionId) ?? [simEvent]
+            : [simEvent]
+          for (const buffered of events) pendingEventsRef.current.push(scopeSessionEvent(buffered))
+        } else {
+          pendingEventsRef.current.push(simEvent)
+        }
         setEventVersion(v => v + 1)
       } else if (event.sessionId && event.sessionId !== selected) {
         // Track background activity for unselected sessions
@@ -147,6 +185,9 @@ export function useBridge(): BridgeHookResult {
     const unsubConfig = bridge.onConfig((config) => {
       setUseMockData(config.showMockData)
     })
+    const unsubSettings = bridge.onSettings?.((settings) => {
+      applySessionViewMode(settings.sessionViewMode === 'tabs' ? 'tabs' : 'overview')
+    })
 
     // Session lifecycle tracking
     // Note: these handlers only update session list + selection state.
@@ -162,6 +203,7 @@ export function useBridge(): BridgeHookResult {
         sessionEventsRef.current.clear()
         setSessionsWithActivity(new Set())
         dismissedSessionsRef.current.clear()
+        setSessionResetVersion(version => version + 1)
         setEventVersion(v => v + 1)
         return
       }
@@ -181,7 +223,7 @@ export function useBridge(): BridgeHookResult {
           setSelectedSessionId(autoId)
           // Flush any events already buffered for this session
           const buffered = sessionEventsRef.current.get(autoId)
-          if (buffered && buffered.length > 0) {
+          if (sessionViewModeRef.current === 'tabs' && buffered && buffered.length > 0) {
             pendingEventsRef.current.length = 0
             pendingEventsRef.current.push(...buffered)
             setEventVersion(v => v + 1)
@@ -222,8 +264,9 @@ export function useBridge(): BridgeHookResult {
       unsubStatus()
       unsubConfig()
       unsubSession()
+      unsubSettings?.()
     }
-  }, [bridge, initialIsConnected])
+  }, [bridge, initialIsConnected, applySessionViewMode])
 
   const consumeEvents = useCallback(() => {
     // Clear in-place so stale closures in animation callbacks
@@ -234,7 +277,7 @@ export function useBridge(): BridgeHookResult {
   const selectSession = useCallback((sessionId: string | null, fromIndex = 0) => {
     selectedSessionIdRef.current = sessionId
     setSelectedSessionId(sessionId)
-    if (sessionId) {
+    if (sessionId && sessionViewModeRef.current === 'tabs') {
       // Flush buffered events for the new session into pending
       // Clear in-place then push to preserve array identity for stale closures
       const buffered = sessionEventsRef.current.get(sessionId) || []
@@ -255,8 +298,6 @@ export function useBridge(): BridgeHookResult {
     return sessionEventsRef.current.get(sessionId)?.length ?? 0
   }, [])
 
-  const dismissedSessionsRef = useRef<Map<string, SessionInfo>>(new Map())
-
   const removeSession = useCallback((sessionId: string) => {
     setSessions(prev => {
       const session = prev.find(s => s.id === sessionId)
@@ -276,6 +317,8 @@ export function useBridge(): BridgeHookResult {
   }, [bridge])
 
   return {
+    sessionViewMode,
+    sessionResetVersion,
     isHosted,
     connectionStatus,
     pendingEvents: pendingEventsRef.current,

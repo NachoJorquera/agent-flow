@@ -1,6 +1,6 @@
 import * as path from 'path'
 import type { AgentEvent } from './protocol'
-import { ARGS_MAX, MESSAGE_MAX, ORCHESTRATOR_NAME, SESSION_LABEL_MAX, SESSION_LABEL_TRUNCATED } from './constants'
+import { ARGS_MAX, MESSAGE_MAX, ORCHESTRATOR_NAME } from './constants'
 import { summarizeResult } from './tool-summarizer'
 import { DelegationTracker } from './delegation-tracker'
 
@@ -100,8 +100,7 @@ export class CodexTranscriptParser {
       this.delegate.onTurnState(true)
       if (item.role === 'user') {
         if (!this.labelSet) {
-          const label = content.replace(/\s+/g, ' ')
-          this.label = label.length > SESSION_LABEL_MAX ? `${label.slice(0, SESSION_LABEL_TRUNCATED)}..` : label
+          this.label = content.split('\n')[0].trim()
           this.labelSet = true
           this.delegate.onLabel(this.label)
         }

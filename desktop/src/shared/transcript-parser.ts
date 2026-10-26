@@ -5,6 +5,7 @@
  * keeping the parsing logic decoupled from file-watching concerns.
  */
 
+import * as fs from 'fs'
 import {
   AgentEvent, PendingToolCall, WatchedSession,
   TranscriptEntry, ToolUseBlock, ToolResultBlock,
@@ -12,8 +13,8 @@ import {
 } from './protocol'
 import { readFileChunk } from './fs-utils'
 import {
+  CLOSED_SESSION_TAIL_BYTES,
   PREVIEW_MAX, ARGS_MAX, RESULT_MAX, MESSAGE_MAX,
-  SESSION_LABEL_MAX, SESSION_LABEL_TRUNCATED,
   CHILD_NAME_MAX,
   HASH_PREFIX_MAX,
   ORCHESTRATOR_NAME,
@@ -53,6 +54,38 @@ function safeText(block: unknown): string {
 function safeThinking(block: unknown): string {
   if (!isRecord(block)) return ''
   return String(block.thinking || '').trim()
+}
+
+/** Session title from a Claude Code `ai-title` line, or null for any other line */
+function readAiTitle(line: unknown): string | null {
+  if (!isRecord(line) || line.type !== 'ai-title' || typeof line.aiTitle !== 'string') return null
+  return line.aiTitle.trim() || null
+}
+
+/** Top-level `type` of a raw JSONL line, or undefined for a blank or partial line */
+function readLineType(line: string): unknown {
+  try {
+    const parsed: unknown = JSON.parse(line)
+    return isRecord(parsed) ? parsed.type : undefined
+  } catch { return undefined /* expected for the cut first line of a tail read */ }
+}
+
+/** Whether the Claude Code process behind a transcript has exited: its last `cost-state`
+ *  line, written on exit, has no user or assistant line after it. Reads only the file tail. */
+export function isClosedTranscript(filePath: string): boolean {
+  let lines: string[]
+  try {
+    const size = fs.statSync(filePath).size
+    const offset = Math.max(0, size - CLOSED_SESSION_TAIL_BYTES)
+    lines = readFileChunk(filePath, offset, size - offset).split('\n')
+    if (offset > 0) lines.shift()
+  } catch { return false /* expected if the file was removed mid-scan */ }
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const type = readLineType(lines[index])
+    if (type === 'cost-state') return true
+    if (type === 'user' || type === 'assistant') return false
+  }
+  return false
 }
 
 export class TranscriptParser {
@@ -99,6 +132,12 @@ export class TranscriptParser {
     try {
       parsed = JSON.parse(line.trim()) as Record<string, unknown>
     } catch {
+      return
+    }
+
+    const aiTitle = readAiTitle(parsed)
+    if (aiTitle) {
+      if (sessionId) this.applySessionTitle(aiTitle, sessionId)
       return
     }
 
@@ -446,6 +485,12 @@ export class TranscriptParser {
               } else if (block.type === 'text') tracker.observeText(safeText(block))
             }
           })
+          const aiTitle = readAiTitle(entry)
+          if (aiTitle) {
+            session.label = aiTitle
+            session.labelSet = true
+            continue
+          }
           // Build dedup sets for tool_use blocks and messages + accumulate token counts
           const isUser = entry.message?.role === 'user' || entry.message?.role === 'human'
           if (entry.message && Array.isArray(entry.message.content)) {
@@ -571,7 +616,7 @@ export class TranscriptParser {
       if (entry.type !== 'user') continue
       const text = this.extractUserMessageText(entry)
       if (text) {
-        session.label = this.truncateLabel(text)
+        session.label = this.firstLineLabel(text)
         session.labelSet = true
         return
       }
@@ -603,11 +648,19 @@ export class TranscriptParser {
     return SYSTEM_CONTENT_PREFIXES.some(prefix => text.startsWith(prefix))
   }
 
-  /** Truncate to first line, max chars — fits in a tab */
-  truncateLabel(text: string): string {
-    const firstLine = text.split('\n')[0].trim()
-    if (firstLine.length <= SESSION_LABEL_MAX) return firstLine
-    return firstLine.slice(0, SESSION_LABEL_TRUNCATED) + '..'
+  /** Full first line of a message; the renderer fits it to tabs and the canvas */
+  firstLineLabel(text: string): string {
+    return text.split('\n')[0].trim()
+  }
+
+  /** Use Claude Code's session title as the label; notify the renderer only when it changes */
+  applySessionTitle(title: string, sessionId: string): void {
+    const session = this.delegate.getSession(sessionId)
+    if (!session) return
+    session.labelSet = true
+    if (session.label === title) return
+    session.label = title
+    this.delegate.fireSessionLifecycle({ type: 'updated', sessionId, label: title })
   }
 
   /** Update session label on first user message and notify the renderer */
@@ -617,7 +670,7 @@ export class TranscriptParser {
     if (entry.type !== 'user') return
     const text = this.extractUserMessageText(entry)
     if (!text) return
-    session.label = this.truncateLabel(text)
+    session.label = this.firstLineLabel(text)
     session.labelSet = true
     this.delegate.fireSessionLifecycle({ type: 'updated', sessionId, label: session.label })
   }

@@ -153,5 +153,5 @@ This starts three concurrent processes: esbuild watch for main process, Vite dev
 - D3-force simulation handles agent positioning with charge, center, collide, and link forces
 - Services (SessionWatcher, HookServer) live at app level in Electron, not tied to window lifecycle
 - Mock scenario data in `web/lib/mock-scenario.ts` for standalone demo/testing
-- Session detection: scans `~/.claude/projects/` for `.jsonl` files modified within 10 minutes
+- Session detection: scans `~/.claude/projects/` for `.jsonl` files modified within 10 minutes, skipping transcripts whose Claude Code process already exited (last `cost-state` line, written on exit, with no user or assistant line after it). Sessions already being watched still end through the inactivity timeout
 - macOS App Nap prevention: `powerSaveBlocker` used when sessions are active

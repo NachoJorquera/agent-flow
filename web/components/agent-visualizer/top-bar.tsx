@@ -6,6 +6,7 @@ import { formatTokens } from "@/lib/utils"
 import { agentCost } from "./canvas/draw-cost"
 import { SessionTabs } from "./session-tabs"
 import type { SessionInfo, ConnectionStatus } from "@/lib/bridge-types"
+import type { SessionViewMode } from "@/lib/bridge-runtime"
 
 // ─── Mute/Unmute SVG Icons ───────────────────────────────────────────────────
 
@@ -76,6 +77,7 @@ function ConnectionIndicator({ status }: { status: ConnectionStatus }) {
 // ─── Top Bar ────────────────────────────────────────────────────────────────
 
 export interface TopBarProps {
+  sessionViewMode: SessionViewMode
   // Session tabs
   sessions: SessionInfo[]
   selectedSessionId: string | null
@@ -102,6 +104,7 @@ export interface TopBarProps {
 }
 
 export function TopBar({
+  sessionViewMode,
   sessions, selectedSessionId, sessionsWithActivity,
   onSelectSession, onCloseSession,
   isHosted, connectionStatus,
@@ -118,7 +121,15 @@ export function TopBar({
       style={{ zIndex: Z.info }}
     >
       {/* Session tabs — scrollable, takes available space */}
-      {sessions.length > 0 && (
+      {sessionViewMode === 'overview' ? (
+        <div
+          className="flex items-center gap-2 rounded px-2 py-1 whitespace-nowrap"
+          style={{ background: COLORS.tabSelectedBg, border: `1px solid ${COLORS.tabSelectedBorder}`, color: COLORS.holoBright }}
+        >
+          <span>All sessions</span>
+          <span style={{ color: COLORS.textDim }}>{sessions.length}</span>
+        </div>
+      ) : sessions.length > 0 && (
         <div className="min-w-0 flex-shrink overflow-x-auto scrollbar-hide">
           <SessionTabs
             sessions={sessions}

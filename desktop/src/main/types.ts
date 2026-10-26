@@ -3,6 +3,7 @@ import type { SessionInfo } from '../shared/protocol'
 export type ConnectionStatus = 'connected' | 'disconnected' | 'watching'
 
 export interface DesktopSettings {
+  sessionViewMode: 'overview' | 'tabs'
   claudeProjectsPath: string
   openFileStrategy: 'auto' | 'vscode' | 'cursor' | 'system'
   editorCommandTemplate: string | null

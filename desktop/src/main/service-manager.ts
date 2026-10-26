@@ -175,7 +175,9 @@ export class ServiceManager {
   }
 
   updateSettings(partial: Parameters<SettingsStore['update']>[0]) {
-    return this.settingsStore.update(partial)
+    const settings = this.settingsStore.update(partial)
+    this.broadcast('settings:updated', settings)
+    return settings
   }
 
   getSettings() {

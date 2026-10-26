@@ -25,6 +25,11 @@ export const PERMISSION_DETECT_MS = 5000
  *  during long thinking pauses. */
 export const ACTIVE_SESSION_AGE_S = 10 * 60 // 10 minutes
 
+/** Bytes read from the end of a transcript to find the `cost-state` line Claude Code
+ *  writes on exit. Only small metadata lines follow it; if it falls outside this
+ *  window the session is treated as live. */
+export const CLOSED_SESSION_TAIL_BYTES = 64 * 1024 // 64 KB
+
 
 /** Returned by HookServer.start() when the port is already in use by another instance */
 export const HOOK_SERVER_NOT_STARTED = -1
@@ -57,12 +62,6 @@ export const RESULT_MAX = 200
 
 /** Message content sent to the renderer */
 export const MESSAGE_MAX = 2000
-
-/** Session tab label */
-export const SESSION_LABEL_MAX = 14
-
-/** Truncated label text (label - ellipsis) */
-export const SESSION_LABEL_TRUNCATED = SESSION_LABEL_MAX - 2
 
 /** File path in discovery labels */
 export const DISCOVERY_LABEL_MAX = 40

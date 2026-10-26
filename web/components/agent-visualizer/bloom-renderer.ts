@@ -4,6 +4,9 @@
  * and composites back with additive blending.
  */
 
+/** Glow spread: one gaussian blur as wide as chained 8, 6 and 4 px blurs (variances add). */
+const BLUR_STD_DEV_PX = Math.hypot(8, 6, 4)
+
 export class BloomRenderer {
   private bloomCanvas: HTMLCanvasElement
   private bloomCtx: CanvasRenderingContext2D
@@ -43,34 +46,18 @@ export class BloomRenderer {
     this.bloomCtx.clearRect(0, 0, w, h)
     this.bloomCtx.drawImage(sourceCanvas, 0, 0, w, h)
 
-    // Apply blur passes (box blur approximation of gaussian)
-    this.boxBlur(this.bloomCtx, this.tempCtx, w, h, 8)
-    this.boxBlur(this.bloomCtx, this.tempCtx, w, h, 6)
-    this.boxBlur(this.bloomCtx, this.tempCtx, w, h, 4)
+    // Blur once into the temp canvas (CSS filter blur is gaussian)
+    this.tempCtx.clearRect(0, 0, w, h)
+    this.tempCtx.filter = `blur(${BLUR_STD_DEV_PX}px)`
+    this.tempCtx.drawImage(this.bloomCanvas, 0, 0)
+    this.tempCtx.filter = 'none'
 
     // Composite bloom over the target with additive blending
     targetCtx.save()
     targetCtx.globalCompositeOperation = 'lighter'
     targetCtx.globalAlpha = this.intensity
-    targetCtx.drawImage(this.bloomCanvas, 0, 0, sourceCanvas.width, sourceCanvas.height)
+    targetCtx.drawImage(this.tempCanvas, 0, 0, sourceCanvas.width, sourceCanvas.height)
     targetCtx.restore()
-  }
-
-  private boxBlur(
-    srcCtx: CanvasRenderingContext2D,
-    tmpCtx: CanvasRenderingContext2D,
-    w: number,
-    h: number,
-    radius: number,
-  ): void {
-    // Use CSS filter for fast blur
-    tmpCtx.clearRect(0, 0, w, h)
-    tmpCtx.filter = `blur(${radius}px)`
-    tmpCtx.drawImage(srcCtx.canvas, 0, 0)
-    tmpCtx.filter = 'none'
-
-    srcCtx.clearRect(0, 0, w, h)
-    srcCtx.drawImage(tmpCtx.canvas, 0, 0)
   }
 
   setIntensity(intensity: number): void {

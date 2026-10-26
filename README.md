@@ -9,7 +9,7 @@ Real-time visualization of Claude Code and Codex sessions. Watch your agents thi
 - **Live agent visualization** — Interactive node graph with real-time tool calls, branching, and return flows powered by D3-force physics
 - **Auto-detect Claude Code and Codex sessions** — Automatically discovers recent local sessions across all projects and streams events, with provider labels in the session tabs
 - **Dual data sources** — Lightweight HTTP hook server for zero-latency streaming plus JSONL transcript watcher for richer metadata, with automatic deduplication
-- **Multi-session support** — Track multiple concurrent agent sessions with tabs
+- **Multi-session support** — See all sessions and their agents on one canvas by default, or choose one tab per session in Settings → Session view. Only the selected view runs.
 - **Interactive canvas** — Pan, zoom, click agents and tool calls to inspect details
 - **Timeline & transcript panels** — Review the full execution timeline, file attention heatmap, and message transcript
 - **JSONL log file support** — Point at any JSONL event log to replay or watch agent activity

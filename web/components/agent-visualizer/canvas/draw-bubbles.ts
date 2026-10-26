@@ -130,10 +130,26 @@ export function wrapText(ctx: CanvasRenderingContext2D, text: string, maxW: numb
         let breakAt = currentLine.length - 1
         while (breakAt > 1 && measureTextCached(ctx, currentLine.slice(0, breakAt)) > maxW) { breakAt-- }
         lines.push(currentLine.slice(0, breakAt))
-        currentLine = leading + currentLine.slice(breakAt)
+        // Re-indent only when the break consumed more than the indentation, so the line always shrinks
+        const rest = currentLine.slice(breakAt)
+        currentLine = breakAt > leading.length ? leading + rest : rest
       }
     }
     if (currentLine) lines.push(currentLine)
   }
   return lines.length > 0 ? lines : ['']
+}
+
+const wrappedLinesCache = new Map<string, string[]>()
+const WRAP_CACHE_MAX = 500
+
+/** wrapText for labels drawn every frame: wraps each font/width/text combination once */
+export function wrapTextCached(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+  const key = `${ctx.font}|${maxW}|${text}`
+  const cached = wrappedLinesCache.get(key)
+  if (cached) return cached
+  const lines = wrapText(ctx, text, maxW)
+  if (wrappedLinesCache.size > WRAP_CACHE_MAX) wrappedLinesCache.clear()
+  wrappedLinesCache.set(key, lines)
+  return lines
 }

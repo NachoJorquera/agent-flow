@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, type MutableRefObject } from 'react'
 import { Agent, ToolCallNode, Discovery, ANIM, NODE } from '@/lib/agent-types'
-import { BUBBLE_HOLD, BUBBLE_FADE_OUT, BUBBLE_MAX_W, TOOL_CARD_W, TOOL_CARD_H, DISC_BOUNDS_HALF_W, DISC_BOUNDS_HALF_H } from '@/lib/canvas-constants'
+import { BUBBLE_HOLD, BUBBLE_FADE_OUT, BUBBLE_MAX_W, TOOL_CARD_W, TOOL_CARD_H, DISC_BOUNDS_HALF_W, DISC_BOUNDS_HALF_H, CAMERA } from '@/lib/canvas-constants'
 
 /** Extra padding added to agent node radii for auto-fit bounding box */
 const AUTOFIT_AGENT_PADDING = 22
@@ -143,6 +143,21 @@ export function useCanvasCamera({
     if (zoomToFitTrigger && zoomToFitTrigger > 0) doZoomToFit()
   }, [zoomToFitTrigger, doZoomToFit])
 
+  /** Animate a zoom around the viewport center (factor > 1 zooms in) and stop auto-fit from undoing it.
+   *  Used by the on-screen zoom buttons; repeated clicks compound on the pending target. */
+  const zoomBy = useCallback((factor: number) => {
+    userHasNavigatedRef.current = true
+    const base = targetTransformRef.current ?? transformRef.current
+    const scale = Math.max(CAMERA.minZoom, Math.min(CAMERA.maxZoom, base.scale * factor))
+    const centerX = dimensions.width / 2
+    const centerY = dimensions.height / 2
+    targetTransformRef.current = {
+      scale,
+      x: centerX - (centerX - base.x) * (scale / base.scale),
+      y: centerY - (centerY - base.y) * (scale / base.scale),
+    }
+  }, [dimensions])
+
   // Re-engage auto-fit when selection changes
   useEffect(() => {
     userHasNavigatedRef.current = false
@@ -204,6 +219,7 @@ export function useCanvasCamera({
     panVelocityRef,
     screenToCanvas,
     doZoomToFit,
+    zoomBy,
     updateCamera,
   }
 }

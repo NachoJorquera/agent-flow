@@ -7,6 +7,7 @@ import { GlassCard } from './glass-card'
 import { PanelHeader, ProgressBar } from './shared-ui'
 
 interface AgentDetailCardProps {
+  sessionLabel?: string
   agent: {
     id: string
     name: string
@@ -22,6 +23,7 @@ interface AgentDetailCardProps {
 
 export function AgentDetailCard({
   agent,
+  sessionLabel,
   onClose,
 }: AgentDetailCardProps) {
   const contextPercent = Math.round((agent.tokensUsed / agent.tokensMax) * 100)
@@ -52,6 +54,12 @@ export function AgentDetailCard({
           {agent.name}
         </span>
       </PanelHeader>
+
+      {sessionLabel && (
+        <div className="mb-3 truncate text-[10px] font-mono" style={{ color: COLORS.textDim }} title={sessionLabel}>
+          {sessionLabel}
+        </div>
+      )}
 
       {/* Context bar */}
       <div className="mb-3">

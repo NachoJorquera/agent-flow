@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { TimelineEntry, Z } from '@/lib/agent-types'
 import { COLORS } from '@/lib/colors'
 import { PanelHeader, SlidingPanel } from './shared-ui'
@@ -11,7 +12,9 @@ interface TimelinePanelProps {
   onClose: () => void
 }
 
-export function TimelinePanel({ visible, timelineEntries, currentTime, onClose }: TimelinePanelProps) {
+/** Re-rendered by the visualizer on every simulation frame.
+ *  While hidden it keeps its last content instead of restyling every bar each frame. */
+export const TimelinePanel = memo(function TimelinePanel({ visible, timelineEntries, currentTime, onClose }: TimelinePanelProps) {
   const entries = Array.from(timelineEntries.values())
     .sort((a, b) => a.startTime - b.startTime)
 
@@ -185,4 +188,4 @@ export function TimelinePanel({ visible, timelineEntries, currentTime, onClose }
       </div>
     </SlidingPanel>
   )
-}
+}, (prev, next) => !prev.visible && !next.visible)

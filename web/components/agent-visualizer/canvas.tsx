@@ -3,8 +3,9 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import { Agent, ToolCallNode, Particle, Edge, Discovery, DepthParticle } from '@/lib/agent-types'
 import { getStateColor } from '@/lib/colors'
-import { ANIM_SPEED } from '@/lib/canvas-constants'
+import { ANIM_SPEED, CAMERA } from '@/lib/canvas-constants'
 import { BloomRenderer } from './bloom-renderer'
+import { ZoomControls } from './zoom-controls'
 import { createDepthParticles, updateDepthParticles, drawBackground } from './background-layer'
 import {
   type VisualEffect,
@@ -24,6 +25,9 @@ import { useCanvasInteraction } from '@/hooks/use-canvas-interaction'
 
 interface CanvasProps {
   agents: Map<string, Agent>
+  sessionLabels?: ReadonlyMap<string, string>
+  /** Label of the main agent in the single-session view, where agents carry no session id */
+  mainAgentLabel?: string
   toolCalls: Map<string, ToolCallNode>
   particles: Particle[]
   edges: Edge[]
@@ -47,7 +51,7 @@ interface CanvasProps {
 }
 
 export function AgentCanvas({
-  agents, toolCalls, particles, edges, discoveries,
+  agents, sessionLabels, mainAgentLabel, toolCalls, particles, edges, discoveries,
   selectedAgentId, hoveredAgentId, showStats, showHexGrid, zoomToFitTrigger, pauseAutoFit,
   onAgentClick, onAgentHover, onAgentDrag, onContextMenu, onToolCallClick, selectedToolCallId, onDiscoveryClick, selectedDiscoveryId, currentTime: simTime, showCostOverlay,
 }: CanvasProps) {
@@ -69,7 +73,7 @@ export function AgentCanvas({
 
   // ─── Stable refs for animation loop & event handlers ────────────────────
   const makeDrawProps = (prev?: { isDragging: boolean }) => ({
-    agents, toolCalls, particles, edges, discoveries,
+    agents, sessionLabels, mainAgentLabel, toolCalls, particles, edges, discoveries,
     selectedAgentId, hoveredAgentId, showStats, showHexGrid,
     showCostOverlay, selectedToolCallId, selectedDiscoveryId,
     simTime, pauseAutoFit, dimensions,
@@ -83,7 +87,7 @@ export function AgentCanvas({
   // ─── Camera ─────────────────────────────────────────────────────────────
   const {
     transformRef, userHasNavigatedRef, panVelocityRef,
-    screenToCanvas, doZoomToFit, updateCamera,
+    screenToCanvas, doZoomToFit, zoomBy, updateCamera,
   } = useCanvasCamera({
     mainCanvasRef, drawPropsRef, simTimeRef, dimensions,
     agentCount: agents.size, zoomToFitTrigger, selectedAgentId,
@@ -222,7 +226,7 @@ export function AgentCanvas({
     drawEdges(ctx, edges, agents, toolCalls, activeEdgeIds, timeRef.current)
     drawToolCalls(ctx, toolCalls, timeRef.current, selectedToolCallId)
     drawDiscoveries(ctx, discoveries, agents, selectedDiscoveryId)
-    drawAgents(ctx, agents, selectedAgentId, hoveredAgentId, showStats, timeRef.current)
+    drawAgents(ctx, agents, selectedAgentId, hoveredAgentId, showStats, timeRef.current, drawPropsRef.current.sessionLabels, drawPropsRef.current.mainAgentLabel)
     drawMessageBubblesWorld(ctx, agents, simTimeRef.current)
     if (showCostOverlay) drawCostLabels(ctx, agents, toolCalls)
     drawParticles(ctx, particles, edgeMap, agents, toolCalls, timeRef.current)
@@ -252,6 +256,10 @@ export function AgentCanvas({
         style={{ width: dimensions.width, height: dimensions.height }}
         {...handlers}
         className="w-full h-full"
+      />
+      <ZoomControls
+        onZoomIn={() => zoomBy(CAMERA.zoomButtonStep)}
+        onZoomOut={() => zoomBy(1 / CAMERA.zoomButtonStep)}
       />
     </div>
   )
