@@ -213,9 +213,9 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
           if (activeFilter && event.sessionId && event.sessionId !== activeFilter) {
             continue
           }
-          // Clamp event time to at least the current sim time so that
-          // bubbles/effects created by this event appear fresh, not pre-aged
-          const eventTime = Math.max(event.time || newTime, newTime)
+          // Sessions have independent elapsed clocks. Keep the shared clock
+          // monotonic across the entire batch, including already-processed events.
+          const eventTime = Math.max(event.time || newTime, newTime, currentState.currentTime)
           const timedEvent = { ...event, time: eventTime }
           // Advance currentTime so processEvent sees correct timestamps
           // (critical for session-switch replay where many events arrive at once)

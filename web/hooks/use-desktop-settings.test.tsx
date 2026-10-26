@@ -19,6 +19,7 @@ describe('useDesktopSettings', () => {
   it('loads and saves desktop settings through the bridge', async () => {
     resetBridgeForTests()
     const getSettings = vi.fn(async () => ({
+      sessionViewMode: 'overview' as const,
       claudeProjectsPath: '~/.claude/projects',
       openFileStrategy: 'auto' as const,
       editorCommandTemplate: null,
@@ -26,6 +27,7 @@ describe('useDesktopSettings', () => {
       ui: { windowBounds: null },
     }))
     const updateSettings = vi.fn(async (partial) => ({
+      sessionViewMode: 'overview' as const,
       claudeProjectsPath: partial.claudeProjectsPath ?? '~/.claude/projects',
       openFileStrategy: 'auto' as const,
       editorCommandTemplate: null,

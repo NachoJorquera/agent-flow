@@ -3,6 +3,7 @@ import { DesktopSettings } from './types'
 import { getClaudeProjectsPath } from './paths'
 
 const defaults: DesktopSettings = {
+  sessionViewMode: 'overview',
   claudeProjectsPath: getClaudeProjectsPath(),
   openFileStrategy: 'auto',
   editorCommandTemplate: null,
@@ -25,6 +26,7 @@ export class SettingsStore {
 
   get(): DesktopSettings {
     return {
+      sessionViewMode: this.conf.get('sessionViewMode') === 'tabs' ? 'tabs' : 'overview',
       claudeProjectsPath: this.conf.get('claudeProjectsPath'),
       openFileStrategy: this.conf.get('openFileStrategy'),
       editorCommandTemplate: this.conf.get('editorCommandTemplate'),

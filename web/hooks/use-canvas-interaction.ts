@@ -25,7 +25,7 @@ interface InteractionOptions {
     discoveries: Discovery[]
   } & InteractionCallbacks>
   transformRef: MutableRefObject<Transform>
-  userHasNavigatedRef: MutableRefObject<boolean>
+  onManualNavigation: () => void
   panVelocityRef: MutableRefObject<{ vx: number; vy: number; active: boolean }>
   simTimeRef: MutableRefObject<number>
   screenToCanvas: (screenX: number, screenY: number) => { x: number; y: number }
@@ -36,7 +36,7 @@ interface InteractionOptions {
 export function useCanvasInteraction({
   drawPropsRef,
   transformRef,
-  userHasNavigatedRef,
+  onManualNavigation,
   panVelocityRef,
   simTimeRef,
   screenToCanvas,
@@ -101,7 +101,7 @@ export function useCanvasInteraction({
     const dragTarget = dragTargetRef.current
     if (dragging && dragTarget) {
       if (dragTarget.type === 'canvas') {
-        userHasNavigatedRef.current = true
+        onManualNavigation()
         const dx = e.clientX - dragTarget.startX
         const dy = e.clientY - dragTarget.startY
         const t = transformRef.current
@@ -122,7 +122,7 @@ export function useCanvasInteraction({
         }
       }
     }
-  }, [screenToCanvas, findAgentAt, drawPropsRef, userHasNavigatedRef, transformRef, panVelocityRef])
+  }, [screenToCanvas, findAgentAt, drawPropsRef, onManualNavigation, transformRef, panVelocityRef])
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     if (e.button === 2) {
@@ -177,7 +177,7 @@ export function useCanvasInteraction({
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault()
-    userHasNavigatedRef.current = true
+    onManualNavigation()
     if (e.ctrlKey || e.metaKey) {
       const delta = e.deltaY > 0 ? CAMERA.zoomStepDown : CAMERA.zoomStepUp
       const rect = mainCanvasRef.current?.getBoundingClientRect()
@@ -191,7 +191,7 @@ export function useCanvasInteraction({
       const prev = transformRef.current
       transformRef.current = { ...prev, x: prev.x - e.deltaX, y: prev.y - e.deltaY }
     }
-  }, [userHasNavigatedRef, mainCanvasRef, transformRef])
+  }, [onManualNavigation, mainCanvasRef, transformRef])
 
   const handleDoubleClick = useCallback(() => {
     doZoomToFit()

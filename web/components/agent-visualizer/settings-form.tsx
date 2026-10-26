@@ -15,27 +15,45 @@ export function SettingsForm({ settings, saving, onSave }: SettingsFormProps) {
     claudeProjectsPath: settings?.claudeProjectsPath ?? '~/.claude/projects',
     openFileStrategy: settings?.openFileStrategy ?? 'auto',
     editorCommandTemplate: settings?.editorCommandTemplate ?? '',
+    sessionViewMode: settings?.sessionViewMode ?? 'overview',
   }), [settings])
 
   const [claudeProjectsPath, setClaudeProjectsPath] = useState(initialState.claudeProjectsPath)
   const [openFileStrategy, setOpenFileStrategy] = useState(initialState.openFileStrategy)
   const [editorCommandTemplate, setEditorCommandTemplate] = useState(initialState.editorCommandTemplate)
+  const [sessionViewMode, setSessionViewMode] = useState(initialState.sessionViewMode)
 
   useEffect(() => {
     setClaudeProjectsPath(initialState.claudeProjectsPath)
     setOpenFileStrategy(initialState.openFileStrategy)
     setEditorCommandTemplate(initialState.editorCommandTemplate)
+    setSessionViewMode(initialState.sessionViewMode)
   }, [initialState])
 
   const dirty = claudeProjectsPath !== initialState.claudeProjectsPath
     || openFileStrategy !== initialState.openFileStrategy
     || editorCommandTemplate !== initialState.editorCommandTemplate
+    || sessionViewMode !== initialState.sessionViewMode
 
   return (
     <div className="space-y-3 text-[11px] font-mono">
       <div>
         <div className="mb-1" style={{ color: COLORS.holoBright }}>Desktop Settings</div>
         <div className="space-y-2">
+          <label className="block">
+            <div className="mb-1" style={{ color: COLORS.textDim }}>Session view</div>
+            <select
+              value={sessionViewMode}
+              onChange={(e) => setSessionViewMode(e.target.value as DesktopSettings['sessionViewMode'])}
+              disabled={saving || !settings}
+              className="w-full rounded px-2 py-1 bg-transparent"
+              style={{ border: `1px solid ${COLORS.holoBorder06}`, color: COLORS.holoBright }}
+            >
+              <option value="overview">All sessions in one tab</option>
+              <option value="tabs">One tab per session</option>
+            </select>
+          </label>
+
           <label className="block">
             <div className="mb-1" style={{ color: COLORS.textMuted }}>Claude projects path</div>
             <input
@@ -87,6 +105,7 @@ export function SettingsForm({ settings, saving, onSave }: SettingsFormProps) {
       <div className="flex items-center gap-2">
         <button
           onClick={() => onSave({
+            sessionViewMode,
             claudeProjectsPath,
             openFileStrategy,
             editorCommandTemplate: editorCommandTemplate.trim() || null,
@@ -102,6 +121,7 @@ export function SettingsForm({ settings, saving, onSave }: SettingsFormProps) {
             setClaudeProjectsPath(initialState.claudeProjectsPath)
             setOpenFileStrategy(initialState.openFileStrategy)
             setEditorCommandTemplate(initialState.editorCommandTemplate)
+            setSessionViewMode(initialState.sessionViewMode)
           }}
           disabled={saving || !dirty}
           className="rounded px-2 py-1 cursor-pointer"

@@ -14,6 +14,7 @@ export interface ContextBreakdown {
 
 export interface Agent {
   id: string
+  sessionId?: string
   name: string
   state: AgentState
   parentId: string | null
@@ -28,6 +29,7 @@ export interface Agent {
   vy: number
   pinned: boolean
   isMain: boolean
+  provider?: 'claude' | 'codex'
   currentTool?: string
   task?: string
   spawnTime: number
@@ -67,6 +69,9 @@ export interface ToolCallNode {
   startTime: number
   completeTime?: number // when the tool call completed (for minimum display duration)
   opacity: number
+  /** Cached card dimensions (set during draw, used by hit-detection) */
+  _cachedW?: number
+  _cachedH?: number
 }
 
 // Discovery — something the agent found and "pinned"

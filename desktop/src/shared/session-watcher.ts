@@ -1,12 +1,12 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
-import { AgentEvent, SessionInfo, WatchedSession } from './protocol'
+import { AgentEvent, SessionInfo, WatchedSession, emitSubagentSpawn } from './protocol'
 import {
   INACTIVITY_TIMEOUT_MS, SCAN_INTERVAL_MS, ACTIVE_SESSION_AGE_S, POLL_FALLBACK_MS,
   SESSION_ID_DISPLAY, SYSTEM_PROMPT_BASE_TOKENS, ORCHESTRATOR_NAME,
 } from './constants'
-import { TranscriptParser } from './transcript-parser'
+import { TranscriptParser, isClosedTranscript } from './transcript-parser'
 import { readNewFileLines } from './fs-utils'
 import { handlePermissionDetection } from './permission-detection'
 import { scanSubagentsDir, readSubagentNewLines } from './subagent-watcher'
@@ -101,6 +101,7 @@ export class SessionWatcher implements Disposable {
   getActiveSessions(): SessionInfo[] {
     return Array.from(this.sessions.values()).map(s => ({
       id: s.sessionId,
+      provider: 'claude',
       label: s.label,
       status: s.sessionCompleted ? 'completed' : 'active',
       startTime: s.sessionStartTime,
@@ -130,6 +131,7 @@ export class SessionWatcher implements Disposable {
           payload: {
             name: ORCHESTRATOR_NAME,
             isMain: true,
+            provider: 'claude',
             task: session.label,
             ...(session.model ? { model: session.model } : {}),
           },
@@ -137,8 +139,12 @@ export class SessionWatcher implements Disposable {
       })
 
       for (const [, sub] of session.subagentWatchers) {
-        sub.spawnEmitted = false
+        if (!sub.spawnEmitted) continue
+        emitSubagentSpawn({
+          emit: event => replayEvents.push({ sessionId, event }), elapsed: () => 0,
+        }, ORCHESTRATOR_NAME, sub.agentName, sub.agentName, sessionId, { provider: 'claude', model: sub.model })
       }
+      for (const event of this.parser.buildDelegationReplayEvents(sessionId)) replayEvents.push({ sessionId, event })
     }
     return replayEvents
   }
@@ -229,6 +235,8 @@ export class SessionWatcher implements Disposable {
       // Start watching any new active files
       for (const af of activeFiles) {
         if (!this.sessions.has(af.sessionId)) {
+          // Recently written but already exited: nothing live to show
+          if (isClosedTranscript(af.filePath)) { continue }
           log.info(`Active session found: ${af.filePath}`)
           this.watchSession(af.sessionId, af.filePath)
         } else {
@@ -292,6 +300,7 @@ export class SessionWatcher implements Disposable {
       payload: {
         name: ORCHESTRATOR_NAME,
         isMain: true,
+        provider: 'claude',
         task: session.label,
         ...(session.model ? { model: session.model } : {}),
       },
@@ -305,6 +314,7 @@ export class SessionWatcher implements Disposable {
     // the session (e.g. the first user message). These were pre-scanned for dedup/tokens
     // but never emitted as events. Emit them now so the renderer shows the full history.
     this.parser.emitCatchUpEntries(catchUpEntries, session, sessionId)
+    for (const event of this.parser.buildDelegationReplayEvents(sessionId)) this.emit(event, sessionId)
 
     // Watch for new content
     session.fileWatcher = fs.watch(filePath, (eventType) => {
@@ -372,6 +382,7 @@ export class SessionWatcher implements Disposable {
         payload: {
           name: ORCHESTRATOR_NAME,
           isMain: true,
+          provider: 'claude',
           task: session.label,
           ...(session.model ? { model: session.model } : {}),
         },

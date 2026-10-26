@@ -1,9 +1,10 @@
-import { useRef, useEffect, useCallback, type MutableRefObject } from 'react'
+import { useRef, useState, useEffect, useCallback, type MutableRefObject } from 'react'
 import { Agent, ToolCallNode, Discovery, ANIM, NODE } from '@/lib/agent-types'
-import { BUBBLE_HOLD, BUBBLE_FADE_OUT, BUBBLE_MAX_W, TOOL_CARD_W, TOOL_CARD_H, DISC_BOUNDS_HALF_W, DISC_BOUNDS_HALF_H } from '@/lib/canvas-constants'
+import { BUBBLE_HOLD, BUBBLE_FADE_OUT, BUBBLE_MAX_W, TOOL_CARD_W, TOOL_CARD_H, DISC_BOUNDS_HALF_W, DISC_BOUNDS_HALF_H, CAMERA } from '@/lib/canvas-constants'
 
 /** Extra padding added to agent node radii for auto-fit bounding box */
 const AUTOFIT_AGENT_PADDING = 22
+const MANUAL_NAVIGATION_PAUSE_MS = 600
 
 export interface Transform {
   x: number
@@ -39,8 +40,10 @@ export function useCanvasCamera({
   selectedAgentId,
 }: CameraOptions) {
   const transformRef = useRef<Transform>({ x: 0, y: 0, scale: 1 })
-  const userHasNavigatedRef = useRef(false)
-  const targetTransformRef = useRef<Transform | null>(null)
+  const [autoFitEnabled, setAutoFitEnabled] = useState(true)
+  const autoFitEnabledRef = useRef(true)
+  const resumeAutoFitAtRef = useRef(0)
+  const targetTransformRef = useRef<(Transform & { manual?: boolean }) | null>(null)
   const panVelocityRef = useRef({ vx: 0, vy: 0, active: false })
 
   // Initialize transform centered on first agents
@@ -134,19 +137,49 @@ export function useCanvasCamera({
   }, [getDescendantIds, drawPropsRef, simTimeRef])
 
   const doZoomToFit = useCallback(() => {
-    userHasNavigatedRef.current = false
+    panVelocityRef.current.active = false
     const target = computeFitTransform()
     if (target) targetTransformRef.current = target
   }, [computeFitTransform])
+
+  const toggleAutoFit = useCallback(() => {
+    const enabled = !autoFitEnabledRef.current
+    autoFitEnabledRef.current = enabled
+    setAutoFitEnabled(enabled)
+    resumeAutoFitAtRef.current = 0
+    panVelocityRef.current.active = false
+    targetTransformRef.current = enabled ? computeFitTransform() : null
+  }, [computeFitTransform])
+
+  // Let the gesture finish before following the graph again, without changing the toggle.
+  const onManualNavigation = useCallback(() => {
+    resumeAutoFitAtRef.current = Date.now() + MANUAL_NAVIGATION_PAUSE_MS
+    targetTransformRef.current = null
+    panVelocityRef.current.active = false
+  }, [])
 
   useEffect(() => {
     if (zoomToFitTrigger && zoomToFitTrigger > 0) doZoomToFit()
   }, [zoomToFitTrigger, doZoomToFit])
 
-  // Re-engage auto-fit when selection changes
+  /** Animate a zoom around the viewport center. Repeated clicks compound on the pending target. */
+  const zoomBy = useCallback((factor: number) => {
+    const base = targetTransformRef.current ?? transformRef.current
+    onManualNavigation()
+    const scale = Math.max(CAMERA.minZoom, Math.min(CAMERA.maxZoom, base.scale * factor))
+    const centerX = dimensions.width / 2
+    const centerY = dimensions.height / 2
+    targetTransformRef.current = {
+      manual: true,
+      scale,
+      x: centerX - (centerX - base.x) * (scale / base.scale),
+      y: centerY - (centerY - base.y) * (scale / base.scale),
+    }
+  }, [dimensions, onManualNavigation])
+
+  // Selection changes the focus scope, while preserving the explicit camera mode.
   useEffect(() => {
-    userHasNavigatedRef.current = false
-    targetTransformRef.current = null
+    if (autoFitEnabledRef.current) targetTransformRef.current = null
   }, [selectedAgentId])
 
   const screenToCanvas = useCallback((screenX: number, screenY: number) => {
@@ -176,7 +209,8 @@ export function useCanvasCamera({
     }
 
     // Auto-fit
-    if (!userHasNavigatedRef.current && !isDragging && !pauseAutoFit) {
+    if (autoFitEnabledRef.current && !isDragging && !pauseAutoFit && !inertia.active
+      && Date.now() >= resumeAutoFitAtRef.current && !targetTransformRef.current?.manual) {
       const fit = computeFitTransform()
       if (fit) targetTransformRef.current = fit
     }
@@ -191,6 +225,7 @@ export function useCanvasCamera({
       const ns = t.scale + (target.scale - t.scale) * lerpSpeed
       if (Math.abs(target.x - nx) < 0.5 && Math.abs(target.y - ny) < 0.5 && Math.abs(target.scale - ns) < 0.001) {
         targetTransformRef.current = null
+        if (target.manual) resumeAutoFitAtRef.current = Date.now() + MANUAL_NAVIGATION_PAUSE_MS
         transformRef.current = { x: target.x, y: target.y, scale: target.scale }
       } else {
         transformRef.current = { x: nx, y: ny, scale: ns }
@@ -200,10 +235,13 @@ export function useCanvasCamera({
 
   return {
     transformRef,
-    userHasNavigatedRef,
+    autoFitEnabled,
+    toggleAutoFit,
+    onManualNavigation,
     panVelocityRef,
     screenToCanvas,
     doZoomToFit,
+    zoomBy,
     updateCamera,
   }
 }

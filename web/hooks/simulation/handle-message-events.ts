@@ -21,9 +21,10 @@ export function handleMessage(
   // Rename main agent to the first user message (more recognizable than "orchestrator")
   if (role === 'user') {
     const msgAgentForName = state.agents.get(agentName)
-    if (msgAgentForName && msgAgentForName.isMain && msgAgentForName.name === agentName) {
+    if (msgAgentForName && msgAgentForName.isMain
+      && (msgAgentForName.name === agentName || (msgAgentForName.sessionId && !msgAgentForName.task))) {
       const shortName = content.slice(0, LABEL_LEN_NAME).replace(/\n/g, ' ').trim()
-      state.agents.set(agentName, { ...msgAgentForName, name: shortName || agentName, task: content.slice(0, LABEL_LEN_TASK) })
+      state.agents.set(agentName, { ...msgAgentForName, name: shortName || msgAgentForName.name, task: content.slice(0, LABEL_LEN_TASK) })
     }
   }
 

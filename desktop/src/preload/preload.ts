@@ -26,5 +26,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSessionEnded: (cb: (sessionId: string) => void) => subscribe('sessions:ended', cb),
   onReset: (cb: (reason: string) => void) => subscribe('app:reset', cb),
   onConfig: (cb: (config: unknown) => void) => subscribe('config:update', cb),
+  onSettings: (cb: (settings: unknown) => void) => subscribe('settings:updated', cb),
 })
 

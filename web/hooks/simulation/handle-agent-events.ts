@@ -4,9 +4,37 @@ import {
   emptyContextBreakdown,
 } from '@/lib/agent-types'
 import { COLORS } from '@/lib/colors'
-import { AGENT_SPAWN_DISTANCE } from '@/lib/canvas-constants'
+import { AGENT_SPAWN_DISTANCE, SESSION_LAYOUT } from '@/lib/canvas-constants'
 import { pushTimelineBlock, type ProcessEventContext, type MutableEventState } from './process-event'
 import { edgeId, asString, asBoolean } from './types'
+
+function providerFromModel(model: string | undefined): Agent['provider'] {
+  if (!model) return undefined
+  if (/(?:gpt|codex)|^o\d/i.test(model)) return 'codex'
+  if (/claude|^(?:sonnet|opus|haiku)(?:[-.]|$)/i.test(model)) return 'claude'
+  return undefined
+}
+
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
+
+/** Position of the nth slot on the golden-angle spiral; slot 0 is the origin and no two slots
+ *  are closer than SESSION_LAYOUT.spacing. */
+function rootSlotPosition(slot: number): { x: number; y: number } {
+  const radius = SESSION_LAYOUT.spacing * Math.sqrt(slot)
+  const angle = slot * GOLDEN_ANGLE
+  return { x: radius * Math.cos(angle), y: radius * Math.sin(angle) }
+}
+
+/** Position for a combined-view session root: the first spiral slot no other root occupies,
+ *  so a root that returns after fading out never lands on top of another one. */
+function freeRootSlot(agents: Map<string, Agent>, name: string): { x: number; y: number } {
+  const otherRoots = Array.from(agents.values()).filter(agent => agent.isMain && agent.id !== name)
+  const isTaken = (position: { x: number; y: number }) => otherRoots.some(root =>
+    Math.hypot(root.x - position.x, root.y - position.y) < SESSION_LAYOUT.spacing / 2)
+  let slot = 0
+  while (isTaken(rootSlotPosition(slot))) slot++
+  return rootSlotPosition(slot)
+}
 
 export function handleAgentSpawn(
   payload: Record<string, unknown>,
@@ -19,8 +47,15 @@ export function handleAgentSpawn(
   const isMain = asBoolean(payload.isMain)
   const task = typeof payload.task === 'string' ? payload.task : undefined
   const model = typeof payload.model === 'string' ? payload.model : undefined
+  const provider = payload.provider === 'codex' || payload.provider === 'claude'
+    ? payload.provider : providerFromModel(model) ?? (parentId ? state.agents.get(parentId)?.provider : isMain ? 'claude' : undefined)
 
   let x = 0, y = 0
+  if (isMain && typeof payload.sessionId === 'string') {
+    const slot = freeRootSlot(state.agents, name)
+    x = slot.x
+    y = slot.y
+  }
   if (parentId) {
     const parent = state.agents.get(parentId)
     if (parent) {
@@ -59,13 +94,14 @@ export function handleAgentSpawn(
   }
 
   const agent: Agent = {
-    id: name, name, state: 'idle',
+    id: name, name: asString(payload.displayName, name), state: 'idle',
+    sessionId: typeof payload.sessionId === 'string' ? payload.sessionId : undefined,
     parentId: parentId || null,
     tokensUsed: 0, tokensMax: ctx.getContextWindowSize(model),
     contextBreakdown: emptyContextBreakdown(),
     toolCalls: 0, timeAlive: 0,
     x, y, vx: 0, vy: 0,
-    pinned: false, isMain,
+    pinned: false, isMain, provider,
     task,
     spawnTime: currentTime,
     opacity: 0, scale: 0.3,
@@ -80,7 +116,7 @@ export function handleAgentSpawn(
   const timelineEntry: TimelineEntry = {
     id: `timeline-${name}`,
     agentId: name,
-    agentName: name,
+    agentName: agent.name,
     startTime: currentTime,
     blocks: [],
   }
@@ -159,7 +195,9 @@ export function handleAgentIdle(
 ): void {
   const idleName = asString(payload.name)
   const idleAgent = state.agents.get(idleName)
-  if (idleAgent && (idleAgent.state === 'tool_calling' || idleAgent.state === 'waiting_permission')) {
+  if (idleAgent && payload.turnComplete === true) {
+    state.agents.set(idleName, { ...idleAgent, state: 'idle', currentTool: undefined })
+  } else if (idleAgent && (idleAgent.state === 'tool_calling' || idleAgent.state === 'waiting_permission')) {
     state.agents.set(idleName, { ...idleAgent, state: 'thinking', currentTool: undefined })
   }
 }
@@ -175,7 +213,9 @@ export function handleModelDetected(
   if (agent) {
     state.agents.set(agentName, {
       ...agent,
-      tokensMax: ctx.getContextWindowSize(model),
+      provider: payload.provider === 'codex' || payload.provider === 'claude'
+        ? payload.provider : providerFromModel(model) ?? agent.provider,
+      tokensMax: model ? ctx.getContextWindowSize(model) : agent.tokensMax,
     })
   }
 }

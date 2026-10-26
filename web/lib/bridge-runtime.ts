@@ -6,7 +6,10 @@ export interface VisualizerConfig {
   showMockData: boolean
 }
 
+export type SessionViewMode = 'overview' | 'tabs'
+
 export interface DesktopSettings {
+  sessionViewMode: SessionViewMode
   claudeProjectsPath: string
   openFileStrategy: 'auto' | 'vscode' | 'cursor' | 'system'
   editorCommandTemplate: string | null
@@ -58,6 +61,7 @@ export interface BridgeAdapter {
   onStatus(cb: StatusCallback): () => void
   onConfig(cb: ConfigCallback): () => void
   onSession(cb: SessionCallback): () => void
+  onSettings?(cb: (settings: DesktopSettings) => void): () => void
   getInitialState?(): Promise<DesktopInitialState | null>
   notifyInitialStateApplied?(): void
   getSettings?(): Promise<DesktopSettings>

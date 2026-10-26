@@ -29,6 +29,30 @@ import { getActiveBridge } from "@/lib/bridge-runtime"
 
 export function AgentVisualizer() {
   const bridge = useBridge()
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false)
+
+  return (
+    <>
+      <SessionVisualizer
+        key={`${bridge.sessionViewMode}:${bridge.sessionResetVersion}`}
+        bridge={bridge}
+        onOpenSettings={() => setShowSettingsPanel(true)}
+      />
+      <SettingsPanel visible={showSettingsPanel} onClose={() => setShowSettingsPanel(false)} />
+    </>
+  )
+}
+
+function SessionVisualizer({ bridge, onOpenSettings }: {
+  bridge: ReturnType<typeof useBridge>
+  onOpenSettings: () => void
+}) {
+  const isOverview = bridge.sessionViewMode === 'overview'
+  const sessionLabels = useMemo(() => isOverview
+    ? new Map(bridge.sessions.map(session => [session.id, session.label]))
+    : undefined, [isOverview, bridge.sessions])
+  const mainAgentLabel = isOverview ? undefined
+    : bridge.sessions.find(session => session.id === bridge.selectedSessionId)?.label
 
   const {
     agents,
@@ -55,10 +79,9 @@ export function AgentVisualizer() {
     useMockData: bridge.useMockData,
     externalEvents: bridge.pendingEvents,
     onExternalEventsConsumed: bridge.consumeEvents,
-    sessionFilter: bridge.selectedSessionId,
-    // Pass the ref that's updated synchronously in session-started handler,
-    // so the animation frame never uses a stale filter value.
-    sessionFilterRef: bridge.selectedSessionIdRef,
+    sessionFilter: isOverview ? null : bridge.selectedSessionId,
+    // In tab mode, read the synchronously updated selection in animation frames.
+    sessionFilterRef: isOverview ? undefined : bridge.selectedSessionIdRef,
   })
 
   const selection = useSelectionState({ agents, toolCalls, discoveries })
@@ -69,7 +92,6 @@ export function AgentVisualizer() {
   const [showTimeline, setShowTimeline] = useState(false)
   const [showFileAttention, setShowFileAttention] = useState(false)
   const [showTranscript, setShowTranscript] = useState(false)
-  const [showSettingsPanel, setShowSettingsPanel] = useState(false)
   const desktopBridge = getActiveBridge()
   const showDesktopSettingsButton = !!(desktopBridge?.getSettings || desktopBridge?.getHooksStatus)
 
@@ -97,6 +119,7 @@ export function AgentVisualizer() {
   const sessionCacheRef = useRef<Map<string, { snapshot: ReturnType<typeof saveSnapshot>; eventCount: number }>>(new Map())
   const prevSelectedRef = useRef<string | null>(null)
   useLayoutEffect(() => {
+    if (isOverview) return
     if (bridge.selectedSessionId && bridge.selectedSessionId !== prevSelectedRef.current) {
       // Save outgoing session state (if any)
       if (prevSelectedRef.current !== null) {
@@ -121,7 +144,7 @@ export function AgentVisualizer() {
 
       prevSelectedRef.current = bridge.selectedSessionId
     }
-  }, [bridge.selectedSessionId, restart, bridge.selectSession, saveSnapshot, restoreSnapshot, bridge.getSessionEventCount])
+  }, [isOverview, bridge.selectedSessionId, restart, bridge.selectSession, saveSnapshot, restoreSnapshot, bridge.getSessionEventCount])
 
   // Timeline events
   const timelineEvents = useMemo((): TimelineEvent[] => {
@@ -234,6 +257,8 @@ export function AgentVisualizer() {
       {/* Canvas fills everything */}
       <AgentCanvas
         agents={agents}
+        sessionLabels={sessionLabels}
+        mainAgentLabel={mainAgentLabel}
         toolCalls={toolCalls}
         particles={particles}
         edges={edges}
@@ -269,6 +294,7 @@ export function AgentVisualizer() {
         <div {...stopPropagationHandlers}>
           <AgentDetailCard
             agent={selectedAgent}
+            sessionLabel={selectedAgent.sessionId ? sessionLabels?.get(selectedAgent.sessionId) : undefined}
             onClose={selection.clearAgent}
           />
         </div>
@@ -363,6 +389,7 @@ export function AgentVisualizer() {
 
       {/* Top bar: session tabs + info/controls */}
       <TopBar
+        sessionViewMode={bridge.sessionViewMode}
         sessions={bridge.sessions}
         selectedSessionId={bridge.selectedSessionId}
         sessionsWithActivity={bridge.sessionsWithActivity}
@@ -389,13 +416,8 @@ export function AgentVisualizer() {
         isMuted={isMuted}
         onTogglePanel={toggleExclusivePanel}
         onToggleTimeline={() => setShowTimeline(prev => !prev)}
-        onOpenSettings={() => setShowSettingsPanel(true)}
+        onOpenSettings={onOpenSettings}
         onToggleMute={handleToggleMute}
-      />
-
-      <SettingsPanel
-        visible={showSettingsPanel}
-        onClose={() => setShowSettingsPanel(false)}
       />
     </div>
     </OpenFileProvider>

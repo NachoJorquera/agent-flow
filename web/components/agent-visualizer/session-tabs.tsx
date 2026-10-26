@@ -39,6 +39,7 @@ export function SessionTabs({
         const isSelected = session.id === selectedSessionId
         const isActive = session.status === 'active'
         const hasActivity = sessionsWithActivity.has(session.id)
+        const provider = session.provider === 'codex' ? 'Codex' : 'Claude'
         // Green dot: session is active, OR has unseen background activity
         const showGreen = isActive || hasActivity
         return (
@@ -46,6 +47,7 @@ export function SessionTabs({
             key={session.id}
             ref={(el) => setButtonRef(session.id, el)}
             onClick={() => onSelectSession(session.id)}
+            title={`${provider} · ${session.label}`}
             className="group px-1.5 py-0.5 rounded transition-all flex items-center gap-1 cursor-pointer"
             style={{
               flexShrink: 0,
@@ -63,7 +65,9 @@ export function SessionTabs({
                 animation: hasActivity && !isSelected ? 'pulse 1.5s infinite' : 'none',
               }}
             />
-            {session.label}
+            <span className="text-[8px] opacity-60">{provider}</span>
+            {/* The label is the full session name; tabs keep their previous width */}
+            <span className="truncate" style={{ maxWidth: '14ch' }}>{session.label}</span>
             <span
               className="ml-0.5 opacity-0 group-hover:opacity-60 transition-opacity cursor-pointer"
               style={{ color: COLORS.tabClose, fontSize: 8, lineHeight: '10px' }}

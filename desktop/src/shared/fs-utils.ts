@@ -38,3 +38,24 @@ export function readNewFileLines(filePath: string, lastSize: number): { lines: s
   const lines = newContent.split('\n').filter(Boolean)
   return { lines, newSize: stat.size }
 }
+
+/** Read only complete JSONL records. Leave partial lines (including UTF-8 bytes)
+ * on disk until the writer finishes them, so polling cannot lose an event. */
+export function readCompleteFileLines(filePath: string, offset: number): { lines: string[]; offset: number; mtime: number } {
+  const fd = fs.openSync(filePath, 'r')
+  try {
+    const stat = fs.fstatSync(fd)
+    if (stat.size < offset) offset = 0
+    const buffer = Buffer.alloc(stat.size - offset)
+    const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, offset)
+    const lastNewline = buffer.subarray(0, bytesRead).lastIndexOf(10)
+    if (lastNewline < 0) return { lines: [], offset, mtime: stat.mtimeMs }
+    return {
+      lines: buffer.subarray(0, lastNewline + 1).toString('utf8').split('\n').filter(Boolean),
+      offset: offset + lastNewline + 1,
+      mtime: stat.mtimeMs,
+    }
+  } finally {
+    fs.closeSync(fd)
+  }
+}

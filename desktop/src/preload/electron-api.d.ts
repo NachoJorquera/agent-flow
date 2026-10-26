@@ -16,4 +16,5 @@ export interface ElectronAPI {
   onSessionEnded(cb: (sessionId: string) => void): () => void
   onReset(cb: (reason: string) => void): () => void
   onConfig(cb: (config: unknown) => void): () => void
+  onSettings(cb: (settings: unknown) => void): () => void
 }

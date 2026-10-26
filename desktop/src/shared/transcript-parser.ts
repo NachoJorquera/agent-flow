@@ -5,6 +5,7 @@
  * keeping the parsing logic decoupled from file-watching concerns.
  */
 
+import * as fs from 'fs'
 import {
   AgentEvent, PendingToolCall, WatchedSession,
   TranscriptEntry, ToolUseBlock, ToolResultBlock,
@@ -12,8 +13,8 @@ import {
 } from './protocol'
 import { readFileChunk } from './fs-utils'
 import {
+  CLOSED_SESSION_TAIL_BYTES,
   PREVIEW_MAX, ARGS_MAX, RESULT_MAX, MESSAGE_MAX,
-  SESSION_LABEL_MAX, SESSION_LABEL_TRUNCATED,
   CHILD_NAME_MAX,
   HASH_PREFIX_MAX,
   ORCHESTRATOR_NAME,
@@ -25,6 +26,8 @@ import {
 import { summarizeInput, summarizeResult, extractInputData, detectError, buildDiscovery } from './tool-summarizer'
 import { estimateTokensFromContent, estimateTokensFromText } from './token-estimator'
 import { createLogger } from './logger'
+import { DelegationTracker } from './delegation-tracker'
+import { agentProvider } from './agent-provider'
 
 const log = createLogger('TranscriptParser')
 
@@ -53,6 +56,38 @@ function safeThinking(block: unknown): string {
   return String(block.thinking || '').trim()
 }
 
+/** Session title from a Claude Code `ai-title` line, or null for any other line */
+function readAiTitle(line: unknown): string | null {
+  if (!isRecord(line) || line.type !== 'ai-title' || typeof line.aiTitle !== 'string') return null
+  return line.aiTitle.trim() || null
+}
+
+/** Top-level `type` of a raw JSONL line, or undefined for a blank or partial line */
+function readLineType(line: string): unknown {
+  try {
+    const parsed: unknown = JSON.parse(line)
+    return isRecord(parsed) ? parsed.type : undefined
+  } catch { return undefined /* expected for the cut first line of a tail read */ }
+}
+
+/** Whether the Claude Code process behind a transcript has exited: its last `cost-state`
+ *  line, written on exit, has no user or assistant line after it. Reads only the file tail. */
+export function isClosedTranscript(filePath: string): boolean {
+  let lines: string[]
+  try {
+    const size = fs.statSync(filePath).size
+    const offset = Math.max(0, size - CLOSED_SESSION_TAIL_BYTES)
+    lines = readFileChunk(filePath, offset, size - offset).split('\n')
+    if (offset > 0) lines.shift()
+  } catch { return false /* expected if the file was removed mid-scan */ }
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const type = readLineType(lines[index])
+    if (type === 'cost-state') return true
+    if (type === 'user' || type === 'assistant') return false
+  }
+  return false
+}
+
 export class TranscriptParser {
   /** Per-subagent dedup state for inline progress events, keyed by parentToolUseID */
   private inlineSubagentState = new Map<string, {
@@ -63,8 +98,27 @@ export class TranscriptParser {
   }>()
   /** Maps Agent tool_use ID → resolved child agent name (set in handleToolUse) */
   private subagentChildNames = new Map<string, string>()
+  private readonly agentModels = new Map<string, string>()
+  private readonly delegations = new Map<string, DelegationTracker>()
 
   constructor(private delegate: TranscriptParserDelegate) {}
+
+  private tracker(sessionId?: string): DelegationTracker {
+    const key = sessionId ?? ''
+    let tracker = this.delegations.get(key)
+    if (!tracker) {
+      tracker = new DelegationTracker({
+        emit: event => this.delegate.emit(event, sessionId),
+        elapsed: () => this.delegate.elapsed(sessionId),
+      }, 'claude')
+      this.delegations.set(key, tracker)
+    }
+    return tracker
+  }
+
+  buildDelegationReplayEvents(sessionId: string): AgentEvent[] {
+    return this.delegations.get(sessionId)?.replayEvents() ?? []
+  }
 
   processTranscriptLine(
     line: string,
@@ -78,6 +132,12 @@ export class TranscriptParser {
     try {
       parsed = JSON.parse(line.trim()) as Record<string, unknown>
     } catch {
+      return
+    }
+
+    const aiTitle = readAiTitle(parsed)
+    if (aiTitle) {
+      if (sessionId) this.applySessionTitle(aiTitle, sessionId)
       return
     }
 
@@ -112,13 +172,19 @@ export class TranscriptParser {
 
     const session = sessionId ? this.delegate.getSession(sessionId) : undefined
 
-    // Extract model from assistant messages (updates tokensMax on the frontend)
-    if (session && !session.model && entry.type === 'assistant' && msg.model) {
-      session.model = msg.model
+    const texts = typeof msg.content === 'string' ? [msg.content]
+      : Array.isArray(msg.content) ? msg.content.filter(block => block.type === 'text').map(block => safeText(block)) : []
+    for (const text of texts) this.tracker(sessionId).observeText(text.trim())
+
+    // Models belong to each agent; a child must not overwrite its parent's model.
+    const modelKey = `${sessionId ?? ''}:${agentName}`
+    if (entry.type === 'assistant' && msg.model && this.agentModels.get(modelKey) !== msg.model) {
+      this.agentModels.set(modelKey, msg.model)
+      if (session && agentName === ORCHESTRATOR_NAME) session.model = msg.model
       this.delegate.emit({
         time: this.delegate.elapsed(sessionId),
         type: 'model_detected',
-        payload: { agent: agentName, model: msg.model },
+        payload: { agent: agentName, model: msg.model, provider: agentProvider(msg.model) ?? 'claude' },
       }, sessionId)
     }
 
@@ -251,9 +317,12 @@ export class TranscriptParser {
       const session = sessionId ? this.delegate.getSession(sessionId) : undefined
       if (!session?.spawnedSubagents.has(childName)) {
         session?.spawnedSubagents.add(childName)
-        emitSubagentSpawn(this.delegate, agentName, childName, args, sessionId)
+        const model = typeof block.input.model === 'string' ? block.input.model : undefined
+        emitSubagentSpawn(this.delegate, agentName, childName, args, sessionId, { model, provider: agentProvider(model) ?? 'claude' })
       }
     }
+
+    this.tracker(sessionId).start(block.id, toolName, block.input, agentName)
 
     this.delegate.emit({
       time: this.delegate.elapsed(sessionId),
@@ -274,6 +343,7 @@ export class TranscriptParser {
     ctxPending: Map<string, PendingToolCall>,
     sessionId?: string,
   ): void {
+    this.tracker(sessionId).result(block.tool_use_id, block.content, block.is_error)
     const pending = ctxPending.get(block.tool_use_id)
     // Skip orphaned tool_results (their tool_use was deduped during catch-up)
     if (!pending) { return }
@@ -400,6 +470,27 @@ export class TranscriptParser {
         if (!line.trim()) { continue }
         try {
           const entry = JSON.parse(line.trim()) as TranscriptEntry
+          const tracker = this.tracker(session.sessionId)
+          tracker.silently(() => {
+            const content = entry.message?.content
+            if (typeof content === 'string') tracker.observeText(content.trim())
+            if (!Array.isArray(content)) return
+            for (const block of content) {
+              if (block.type === 'tool_use') {
+                const tool = block as ToolUseBlock
+                tracker.start(tool.id, tool.name, tool.input, ORCHESTRATOR_NAME)
+              } else if (block.type === 'tool_result') {
+                const result = block as ToolResultBlock
+                tracker.result(result.tool_use_id, result.content, result.is_error)
+              } else if (block.type === 'text') tracker.observeText(safeText(block))
+            }
+          })
+          const aiTitle = readAiTitle(entry)
+          if (aiTitle) {
+            session.label = aiTitle
+            session.labelSet = true
+            continue
+          }
           // Build dedup sets for tool_use blocks and messages + accumulate token counts
           const isUser = entry.message?.role === 'user' || entry.message?.role === 'human'
           if (entry.message && Array.isArray(entry.message.content)) {
@@ -525,7 +616,7 @@ export class TranscriptParser {
       if (entry.type !== 'user') continue
       const text = this.extractUserMessageText(entry)
       if (text) {
-        session.label = this.truncateLabel(text)
+        session.label = this.firstLineLabel(text)
         session.labelSet = true
         return
       }
@@ -557,11 +648,19 @@ export class TranscriptParser {
     return SYSTEM_CONTENT_PREFIXES.some(prefix => text.startsWith(prefix))
   }
 
-  /** Truncate to first line, max chars — fits in a tab */
-  truncateLabel(text: string): string {
-    const firstLine = text.split('\n')[0].trim()
-    if (firstLine.length <= SESSION_LABEL_MAX) return firstLine
-    return firstLine.slice(0, SESSION_LABEL_TRUNCATED) + '..'
+  /** Full first line of a message; the renderer fits it to tabs and the canvas */
+  firstLineLabel(text: string): string {
+    return text.split('\n')[0].trim()
+  }
+
+  /** Use Claude Code's session title as the label; notify the renderer only when it changes */
+  applySessionTitle(title: string, sessionId: string): void {
+    const session = this.delegate.getSession(sessionId)
+    if (!session) return
+    session.labelSet = true
+    if (session.label === title) return
+    session.label = title
+    this.delegate.fireSessionLifecycle({ type: 'updated', sessionId, label: title })
   }
 
   /** Update session label on first user message and notify the renderer */
@@ -571,7 +670,7 @@ export class TranscriptParser {
     if (entry.type !== 'user') return
     const text = this.extractUserMessageText(entry)
     if (!text) return
-    session.label = this.truncateLabel(text)
+    session.label = this.firstLineLabel(text)
     session.labelSet = true
     this.delegate.fireSessionLifecycle({ type: 'updated', sessionId, label: session.label })
   }
