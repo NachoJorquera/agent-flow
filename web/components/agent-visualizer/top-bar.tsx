@@ -129,7 +129,7 @@ export function TopBar({
           <span>All sessions</span>
           <span style={{ color: COLORS.textDim }}>{sessions.length}</span>
         </div>
-      ) : sessions.length > 1 && (
+      ) : sessions.length > 0 && (
         <div className="min-w-0 flex-shrink overflow-x-auto scrollbar-hide">
           <SessionTabs
             sessions={sessions}

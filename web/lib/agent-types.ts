@@ -29,6 +29,7 @@ export interface Agent {
   vy: number
   pinned: boolean
   isMain: boolean
+  provider?: 'claude' | 'codex'
   currentTool?: string
   task?: string
   spawnTime: number

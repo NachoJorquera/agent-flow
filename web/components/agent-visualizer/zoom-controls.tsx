@@ -3,8 +3,10 @@
 import { Z } from '@/lib/agent-types'
 import { COLORS } from '@/lib/colors'
 
-function ZoomButton({ label, onClick, children }: {
+function ZoomButton({ label, title = label, pressed, onClick, children }: {
   label: string
+  title?: string
+  pressed?: boolean
   onClick: () => void
   children: React.ReactNode
 }) {
@@ -12,13 +14,14 @@ function ZoomButton({ label, onClick, children }: {
     <button
       type="button"
       aria-label={label}
-      title={label}
+      aria-pressed={pressed}
+      title={title}
       onClick={onClick}
       className="w-6 h-6 flex items-center justify-center rounded transition-all hover:scale-105 cursor-pointer"
       style={{
-        background: COLORS.holoBg10,
-        border: `1px solid ${COLORS.reviewBtnBorder}`,
-        color: COLORS.textPrimary,
+        background: pressed ? COLORS.tabSelectedBg : COLORS.holoBg10,
+        border: `1px solid ${pressed ? COLORS.tabSelectedBorder : COLORS.reviewBtnBorder}`,
+        color: pressed ? COLORS.holoBright : COLORS.textPrimary,
       }}
     >
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -30,7 +33,12 @@ function ZoomButton({ label, onClick, children }: {
 
 /** Zoom out and zoom in buttons at the bottom-left of the canvas, on the control bar's row; below 880px
  *  the centered 680px control bar reaches them, so they move above it. Render inside the canvas container. */
-export function ZoomControls({ onZoomIn, onZoomOut }: { onZoomIn: () => void; onZoomOut: () => void }) {
+export function ZoomControls({ onZoomIn, onZoomOut, autoFitEnabled, onToggleAutoFit }: {
+  onZoomIn: () => void
+  onZoomOut: () => void
+  autoFitEnabled: boolean
+  onToggleAutoFit: () => void
+}) {
   return (
     <div
       className="absolute bottom-4 max-[880px]:bottom-24 left-4 glass-card flex items-center gap-1.5"
@@ -42,6 +50,17 @@ export function ZoomControls({ onZoomIn, onZoomOut }: { onZoomIn: () => void; on
       <ZoomButton label="Zoom in" onClick={onZoomIn}>
         <line x1="12" y1="5" x2="12" y2="19" />
         <line x1="5" y1="12" x2="19" y2="12" />
+      </ZoomButton>
+      <ZoomButton
+        label="Automatic zoom"
+        title={autoFitEnabled ? 'Automatic zoom on — switch to manual camera' : 'Automatic zoom off — follow the graph'}
+        pressed={autoFitEnabled}
+        onClick={onToggleAutoFit}
+      >
+        <rect x="5" y="10" width="14" height="11" rx="2" />
+        {autoFitEnabled
+          ? <path d="M8 10V6a4 4 0 0 1 8 0v4" />
+          : <path d="M8 10V6a4 4 0 0 1 8 0" />}
       </ZoomButton>
     </div>
   )

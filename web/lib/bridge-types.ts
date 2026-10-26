@@ -15,6 +15,7 @@ export interface AgentEvent {
 
 export interface SessionInfo {
   id: string
+  provider?: 'claude' | 'codex'
   label: string
   status: 'active' | 'completed'
   startTime: number

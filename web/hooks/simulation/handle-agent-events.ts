@@ -8,6 +8,13 @@ import { AGENT_SPAWN_DISTANCE, SESSION_LAYOUT } from '@/lib/canvas-constants'
 import { pushTimelineBlock, type ProcessEventContext, type MutableEventState } from './process-event'
 import { edgeId, asString, asBoolean } from './types'
 
+function providerFromModel(model: string | undefined): Agent['provider'] {
+  if (!model) return undefined
+  if (/(?:gpt|codex)|^o\d/i.test(model)) return 'codex'
+  if (/claude|^(?:sonnet|opus|haiku)(?:[-.]|$)/i.test(model)) return 'claude'
+  return undefined
+}
+
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 
 /** Position of the nth slot on the golden-angle spiral; slot 0 is the origin and no two slots
@@ -40,6 +47,8 @@ export function handleAgentSpawn(
   const isMain = asBoolean(payload.isMain)
   const task = typeof payload.task === 'string' ? payload.task : undefined
   const model = typeof payload.model === 'string' ? payload.model : undefined
+  const provider = payload.provider === 'codex' || payload.provider === 'claude'
+    ? payload.provider : providerFromModel(model) ?? (parentId ? state.agents.get(parentId)?.provider : isMain ? 'claude' : undefined)
 
   let x = 0, y = 0
   if (isMain && typeof payload.sessionId === 'string') {
@@ -92,7 +101,7 @@ export function handleAgentSpawn(
     contextBreakdown: emptyContextBreakdown(),
     toolCalls: 0, timeAlive: 0,
     x, y, vx: 0, vy: 0,
-    pinned: false, isMain,
+    pinned: false, isMain, provider,
     task,
     spawnTime: currentTime,
     opacity: 0, scale: 0.3,
@@ -186,7 +195,9 @@ export function handleAgentIdle(
 ): void {
   const idleName = asString(payload.name)
   const idleAgent = state.agents.get(idleName)
-  if (idleAgent && (idleAgent.state === 'tool_calling' || idleAgent.state === 'waiting_permission')) {
+  if (idleAgent && payload.turnComplete === true) {
+    state.agents.set(idleName, { ...idleAgent, state: 'idle', currentTool: undefined })
+  } else if (idleAgent && (idleAgent.state === 'tool_calling' || idleAgent.state === 'waiting_permission')) {
     state.agents.set(idleName, { ...idleAgent, state: 'thinking', currentTool: undefined })
   }
 }
@@ -202,7 +213,9 @@ export function handleModelDetected(
   if (agent) {
     state.agents.set(agentName, {
       ...agent,
-      tokensMax: ctx.getContextWindowSize(model),
+      provider: payload.provider === 'codex' || payload.provider === 'claude'
+        ? payload.provider : providerFromModel(model) ?? agent.provider,
+      tokensMax: model ? ctx.getContextWindowSize(model) : agent.tokensMax,
     })
   }
 }

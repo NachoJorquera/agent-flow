@@ -108,7 +108,8 @@ function startWatchingSubagentFile(
         if (!line.trim()) continue
         try {
           const raw: unknown = JSON.parse(line.trim())
-          const entry = raw as { message?: { content?: Array<{ type: string; id?: string; tool_use_id?: string }> } }
+          const entry = raw as { message?: { model?: string; content?: Array<{ type: string; id?: string; tool_use_id?: string }> } }
+          if (typeof entry?.message?.model === 'string') state.model = entry.message.model
           if (raw && typeof raw === 'object' && entry.message && Array.isArray(entry.message.content)) {
             for (const block of entry.message.content) {
               if (block.type === 'tool_use' && block.id) {
@@ -131,7 +132,7 @@ function startWatchingSubagentFile(
   state.spawnEmitted = pendingToolUseIds.size > 0 || alreadySpawned
   if (pendingToolUseIds.size > 0 && !alreadySpawned) {
     session.spawnedSubagents.add(agentName)
-    emitSubagentSpawn(delegate, ORCHESTRATOR_NAME, agentName, agentName, sessionId)
+    emitSubagentSpawn(delegate, ORCHESTRATOR_NAME, agentName, agentName, sessionId, { provider: 'claude', model: state.model })
   }
 
   // Watch for new content
@@ -172,7 +173,7 @@ export function readSubagentNewLines(
     state.spawnEmitted = true
     if (!session.spawnedSubagents.has(state.agentName)) {
       session.spawnedSubagents.add(state.agentName)
-      emitSubagentSpawn(delegate, ORCHESTRATOR_NAME, state.agentName, state.agentName, sessionId)
+      emitSubagentSpawn(delegate, ORCHESTRATOR_NAME, state.agentName, state.agentName, sessionId, { provider: 'claude', model: state.model })
     }
   }
 
