@@ -11,6 +11,7 @@ export interface AgentEvent {
   type: string
   payload: Record<string, unknown>
   sessionId?: string
+  historical?: boolean
 }
 
 export interface SessionInfo {
@@ -23,3 +24,9 @@ export interface SessionInfo {
 }
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'watching'
+
+export interface SessionMerge {
+  sessionId: string
+  parentSessionId: string
+  events: AgentEvent[]
+}

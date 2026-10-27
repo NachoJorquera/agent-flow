@@ -1,4 +1,4 @@
-import type { AgentEvent, ConnectionStatus, SessionInfo } from './bridge-types'
+import type { AgentEvent, ConnectionStatus, SessionInfo, SessionMerge } from './bridge-types'
 import type {
   BridgeAdapter, ConfigCallback, DesktopHookStatus, DesktopInitialState, DesktopSettings,
   EventCallback, SessionCallback, StatusCallback,
@@ -22,6 +22,7 @@ interface ElectronAPI {
   onSessionStarted(cb: (session: SessionInfo) => void): Unsubscribe
   onSessionUpdated(cb: (data: { sessionId: string; label: string }) => void): Unsubscribe
   onSessionEnded(cb: (sessionId: string) => void): Unsubscribe
+  onSessionMerged(cb: (data: SessionMerge) => void): Unsubscribe
   onReset(cb: (reason: string) => void): Unsubscribe
   onConfig(cb: (config: { mode: string; autoPlay: boolean; showMockData: boolean }) => void): Unsubscribe
   onSettings(cb: (settings: DesktopSettings) => void): Unsubscribe
@@ -65,6 +66,9 @@ export class ElectronBridge implements BridgeAdapter {
       }),
       this.api.onSessionEnded((sessionId) => {
         for (const cb of this.sessionListeners) cb('ended', sessionId)
+      }),
+      this.api.onSessionMerged((data) => {
+        for (const cb of this.sessionListeners) cb('merged', data)
       }),
       this.api.onReset((reason) => {
         for (const cb of this.sessionListeners) cb('reset', reason)

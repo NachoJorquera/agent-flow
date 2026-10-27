@@ -145,6 +145,9 @@ export class SessionWatcher implements Disposable {
         }, ORCHESTRATOR_NAME, sub.agentName, sub.agentName, sessionId, { provider: 'claude', model: sub.model })
       }
       for (const event of this.parser.buildDelegationReplayEvents(sessionId)) replayEvents.push({ sessionId, event })
+      if (session.sessionCompleted) replayEvents.push({
+        sessionId, event: { time: this.elapsed(sessionId), type: 'agent_complete', payload: { name: ORCHESTRATOR_NAME } },
+      })
     }
     return replayEvents
   }
@@ -382,6 +385,7 @@ export class SessionWatcher implements Disposable {
         payload: {
           name: ORCHESTRATOR_NAME,
           isMain: true,
+          resumed: true,
           provider: 'claude',
           task: session.label,
           ...(session.model ? { model: session.model } : {}),

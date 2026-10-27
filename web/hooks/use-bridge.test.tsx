@@ -61,6 +61,7 @@ describe('useBridge', () => {
     act(() => result.current.selectSession('s2'))
     expect(result.current.pendingEvents).toHaveLength(2)
     expect(result.current.pendingEvents.every(event => event.sessionId === 's2')).toBe(true)
+    expect(result.current.pendingEvents.find(event => event.type === 'message')?.historical).toBe(true)
     act(() => { result.current.consumeEvents(); onSettings(settings) })
     expect(result.current.sessionViewMode).toBe('overview')
     expect(result.current.pendingEvents).toHaveLength(3)
@@ -83,6 +84,7 @@ describe('useBridge', () => {
     act(() => result.current.consumeEvents())
     act(() => onEvent({ sessionId: 's1', type: 'message', time: 3, payload: { agent: 'main', content: 'More work' } }))
     expect(result.current.pendingEvents).toHaveLength(1)
+    expect(result.current.pendingEvents[0].historical).toBeUndefined()
 
     act(() => onSession('reset', 'reopened'))
     expect(result.current.sessionResetVersion).toBe(1)
@@ -136,5 +138,45 @@ describe('useBridge', () => {
     await waitFor(() => {
       expect(screen.getByTestId('activity')).toHaveTextContent('s2')
     })
+  })
+
+  it.each(['overview', 'tabs'] as const)('merges a late-discovered reviewer without losing its history in %s mode', mode => {
+    resetBridgeForTests()
+    let onEvent: EventCallback = () => {}
+    let onSession: SessionCallback = () => {}
+    let onSettings: (settings: DesktopSettings) => void = () => {}
+    setActiveBridge({
+      isHosted: true, onEvent: cb => { onEvent = cb; return () => {} },
+      onSession: cb => { onSession = cb; return () => {} },
+      onSettings: cb => { onSettings = cb; return () => {} },
+      onStatus: () => () => {}, onConfig: () => () => {}, openFile() {}, dispose() {},
+    })
+    const { result } = renderHook(() => useBridge())
+    act(() => {
+      onSession('list', [
+        { id: 'parent', label: 'Claude', status: 'active', startTime: 0, lastActivityTime: 1 },
+        { id: 'codex:child', label: 'Sol review', status: 'active', startTime: 1, lastActivityTime: 2 },
+      ])
+      onEvent({ type: 'agent_spawn', time: 0, sessionId: 'parent', payload: { name: 'orchestrator', isMain: true } })
+      onEvent({ type: 'agent_spawn', time: 1, sessionId: 'parent', payload: { name: 'reviewer', parent: 'orchestrator' } })
+      onEvent({ type: 'agent_spawn', time: 0, sessionId: 'codex:child', payload: { name: 'orchestrator', isMain: true } })
+      onEvent({ type: 'message', time: 2, sessionId: 'codex:child', payload: { agent: 'orchestrator', content: 'Review in progress' } })
+    })
+    act(() => {
+      result.current.selectSession('codex:child')
+      onSettings({ sessionViewMode: mode } as DesktopSettings)
+      result.current.consumeEvents()
+      onSession('merged', { sessionId: 'codex:child', parentSessionId: 'parent', events: [
+        { type: 'message', time: 3, sessionId: 'parent', payload: { agent: 'reviewer', content: 'Review in progress' } },
+      ] })
+    })
+    expect(result.current.sessions.map(session => session.id)).toEqual(['parent'])
+    expect(result.current.selectedSessionId).toBe('parent')
+    expect(result.current.getSessionEventCount('codex:child')).toBe(0)
+    expect(result.current.getSessionEventCount('parent')).toBe(3)
+    expect(result.current.sessionResetVersion).toBe(1)
+    expect(result.current.pendingEvents).toHaveLength(3)
+    expect(result.current.pendingEvents.every(event => event.sessionId === 'parent')).toBe(true)
+    expect(result.current.pendingEvents.at(-1)?.payload.agent).toBe(mode === 'overview' ? '["parent","reviewer"]' : 'reviewer')
   })
 })

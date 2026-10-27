@@ -181,7 +181,7 @@ export const AGENT_DRAW = {
   /** Line height of a wrapped agent name label */
   labelLineHeight: 12,
   /** Max width (px) of a wrapped agent, subagent or session name */
-  labelWidth: 80,
+  labelWidth: 160,
   /** Scanline gradient half-height */
   scanlineHalfH: 4,
   /** Scanline width = 2 * scanlineHalfH */

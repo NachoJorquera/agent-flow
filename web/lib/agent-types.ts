@@ -162,6 +162,7 @@ export interface SimulationEvent {
     | 'permission_requested'
   payload: Record<string, unknown>
   sessionId?: string
+  historical?: boolean
 }
 
 export interface DepthParticle {

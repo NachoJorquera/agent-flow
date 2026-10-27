@@ -8,7 +8,7 @@
 /** How long to wait before declaring a session inactive (ms).
  *  Claude can think for several minutes with extended thinking,
  *  so this needs to be generous to avoid false "completed" state. */
-export const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
+export const INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000 // 2 minutes
 
 /** Interval between active-session directory scans (ms) */
 export const SCAN_INTERVAL_MS = 1000

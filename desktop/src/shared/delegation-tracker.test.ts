@@ -19,9 +19,11 @@ describe('cross-provider delegations', () => {
     subject.start('call-sol', 'mcp__t3-code__delegate_task', {
       title: 'Sol review', task: 'Review the changes', target: { providerInstanceId: 'codex', model: 'gpt-6.1-sol' },
     }, 'orchestrator')
-    subject.result('call-sol', JSON.stringify({ taskId: 'task-sol', status: 'running', providerInstanceId: 'codex', model: 'gpt-6.1-sol' }))
+    subject.result('call-sol', JSON.stringify({ taskId: 'task-sol', childThreadId: 't3-child', status: 'running', providerInstanceId: 'codex', model: 'gpt-6.1-sol' }))
     expect(events.find(event => event.type === 'agent_spawn')?.payload).toMatchObject({ provider: 'codex', model: 'gpt-6.1-sol', parent: 'orchestrator' })
     expect(events.some(event => event.type === 'agent_complete')).toBe(false)
+    expect(events.find(event => event.type === 'agent_link')?.payload).toMatchObject({ name: 'Sol review · call-sol', childThreadId: 't3-child' })
+    expect(subject.replayEvents().find(event => event.type === 'agent_spawn')?.payload.childThreadId).toBe('t3-child')
     subject.result('status-call', { taskId: 'task-sol', status: 'completed' })
     expect(events.filter(event => event.type === 'agent_complete')).toHaveLength(1)
     expect(subject.replayEvents().find(event => event.type === 'agent_spawn')?.payload.provider).toBe('codex')

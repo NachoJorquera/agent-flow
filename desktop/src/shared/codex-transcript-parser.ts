@@ -18,6 +18,15 @@ function textContent(value: unknown): string {
   }).filter(Boolean).join('\n')
 }
 
+/** Attachment references belong to the message, not the provisional session name. */
+function userMessageLabel(content: string): string | undefined {
+  return content
+    .replace(/<t3_context\b[^>]*>[\s\S]*?<\/t3_context>/g, '')
+    .replace(/\[Image:[^\]]*;\s*ref=image_[^\]]*\]/g, '')
+    .replace(/\[Attached image [^\r\n]* is saved at: [^\r\n]*\]/g, '')
+    .split(/\r?\n/).map(line => line.trim()).find(Boolean)
+}
+
 /** Reads Codex rollout records, using response_item as the canonical message/tool source.
  * event_msg mirrors those records, so only lifecycle and usage are read from it. */
 export class CodexTranscriptParser {
@@ -98,9 +107,10 @@ export class CodexTranscriptParser {
       // Codex records injected environment/repository instructions as user messages too.
       if (item.role === 'user' && /^(?:<environment_context>|<permissions instructions>|<collaboration_mode>|# AGENTS\.md instructions|<INSTRUCTIONS>)/.test(content)) return
       this.delegate.onTurnState(true)
-      if (item.role === 'user') {
-        if (!this.labelSet) {
-          this.label = content.split('\n')[0].trim()
+      if (item.role === 'user' && !this.labelSet) {
+        const label = userMessageLabel(content)
+        if (label) {
+          this.label = label
           this.labelSet = true
           this.delegate.onLabel(this.label)
         }
