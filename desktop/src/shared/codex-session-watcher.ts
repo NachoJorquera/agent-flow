@@ -12,6 +12,10 @@ import type { SessionLifecycle, SessionSource } from './session-source'
 const log = createLogger('CodexSessionWatcher')
 const MAX_REPLAY_EVENTS = 1000
 
+function historicalEvent(event: AgentEvent): AgentEvent {
+  return event.type === 'message' && !event.historical ? { ...event, historical: true } : event
+}
+
 interface CodexSession {
   info: SessionInfo
   filePath: string
@@ -20,6 +24,7 @@ interface CodexSession {
   watcher: fs.FSWatcher | null
   events: AgentEvent[]
   bootstrapping: boolean
+  expired: boolean
 }
 
 /** Discovers CLI, IDE and desktop Codex rollouts under CODEX_HOME/sessions. */
@@ -51,9 +56,7 @@ export class CodexSessionWatcher implements SessionSource {
     // Always poll known files, including resumed sessions in older date directories.
     for (const session of this.sessions.values()) {
       this.readSession(session)
-      if (session.info.status === 'active' && Date.now() - session.info.lastActivityTime >= INACTIVITY_TIMEOUT_MS) {
-        this.setTurnState(session, false)
-      }
+      this.expireSession(session)
     }
     if (!fs.existsSync(this.sessionsDir)) return
     if (!this.rootWatcher) {
@@ -77,7 +80,7 @@ export class CodexSessionWatcher implements SessionSource {
   buildReplayStartEvents(sessionIds?: string[]): Array<{ sessionId: string; event: AgentEvent }> {
     return Array.from(this.sessions.values())
       .filter(session => !sessionIds || sessionIds.includes(session.info.id))
-      .flatMap(session => [this.spawnEvent(session), ...session.events].map(event => ({ sessionId: session.info.id, event })))
+      .flatMap(session => [this.spawnEvent(session), ...session.events].map(event => ({ sessionId: session.info.id, event: historicalEvent(event) })))
   }
 
   private scanDirectory(directory: string, depth: number): void {
@@ -111,7 +114,7 @@ export class CodexSessionWatcher implements SessionSource {
         startTime: Number.isFinite(timestamp) ? timestamp : Date.now(),
         lastActivityTime: initial.mtime,
       },
-      filePath, offset: initial.offset, watcher: null, events: [], bootstrapping: true,
+      filePath, offset: initial.offset, watcher: null, events: [], bootstrapping: true, expired: false,
       parser: new CodexTranscriptParser({
         emit: event => this.emit(session, event),
         elapsed: () => Math.max(0, (Date.now() - session.info.startTime) / 1000),
@@ -125,6 +128,7 @@ export class CodexSessionWatcher implements SessionSource {
     this.sessions.set(sessionId, session)
     this.files.add(filePath)
     for (const line of initial.lines) session.parser.processLine(line)
+    this.expireSession(session)
     session.bootstrapping = false
     this.detected.fire(sessionId)
     this.fireLifecycle(session, 'started')
@@ -147,6 +151,11 @@ export class CodexSessionWatcher implements SessionSource {
   }
 
   private setTurnState(session: CodexSession, active: boolean): void {
+    if (active && (session.expired || session.info.status === 'completed')) {
+      session.expired = false
+      const spawn = this.spawnEvent(session)
+      this.emit(session, { ...spawn, payload: { ...spawn.payload, resumed: true }, time: Math.max(0, (Date.now() - session.info.startTime) / 1000) })
+    }
     const status = active ? 'active' : 'completed'
     if (session.info.status === status) return
     session.info.status = status
@@ -165,6 +174,16 @@ export class CodexSessionWatcher implements SessionSource {
     }
   }
 
+  private expireSession(session: CodexSession): void {
+    if (session.expired || Date.now() - session.info.lastActivityTime < INACTIVITY_TIMEOUT_MS) return
+    this.setTurnState(session, false)
+    session.expired = true
+    this.emit(session, {
+      time: Math.max(0, (Date.now() - session.info.startTime) / 1000),
+      type: 'agent_complete', payload: { name: ORCHESTRATOR_NAME },
+    })
+  }
+
   private spawnEvent(session: CodexSession): AgentEvent {
     return {
       time: 0, type: 'agent_spawn',
@@ -173,6 +192,8 @@ export class CodexSessionWatcher implements SessionSource {
   }
 
   private emit(session: CodexSession, event: AgentEvent): void {
+    // Keep past conversation entries for Chat/Review without announcing them as new bubbles.
+    if (session.bootstrapping) event = historicalEvent(event)
     session.events.push(event)
     if (session.events.length > MAX_REPLAY_EVENTS) session.events.shift()
     if (!session.bootstrapping) this.events.fire({ ...event, sessionId: session.info.id })

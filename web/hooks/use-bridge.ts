@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import type { ConnectionStatus, AgentEvent, SessionInfo } from '@/lib/bridge-types'
+import type { ConnectionStatus, AgentEvent, SessionInfo, SessionMerge } from '@/lib/bridge-types'
 import { getActiveBridge, type SessionViewMode } from '@/lib/bridge-runtime'
 import { SimulationEvent } from '@/lib/agent-types'
-import { scopeSessionEvent } from '@/lib/session-events'
+import { historicalEvent, scopeSessionEvent } from '@/lib/session-events'
 
 interface BridgeHookResult {
   sessionViewMode: SessionViewMode
@@ -75,11 +75,11 @@ export function useBridge(): BridgeHookResult {
         .filter(([sessionId]) => !dismissedSessionsRef.current.has(sessionId))
         .flatMap(([, events]) => events)
       events.sort((a, b) => a.time - b.time)
-      for (const event of events) pendingEventsRef.current.push(scopeSessionEvent(event))
+      for (const event of events) pendingEventsRef.current.push(scopeSessionEvent(historicalEvent(event)))
       setSessionsWithActivity(new Set())
     } else if (selectedSessionIdRef.current) {
       const events = sessionEventsRef.current.get(selectedSessionIdRef.current) ?? []
-      for (const event of events) pendingEventsRef.current.push(event)
+      for (const event of events) pendingEventsRef.current.push(historicalEvent(event))
     }
     setSessionViewMode(mode)
   }, [])
@@ -132,6 +132,7 @@ export function useBridge(): BridgeHookResult {
         type: event.type as SimulationEvent['type'],
         payload: event.payload,
         sessionId: event.sessionId,
+        historical: event.historical,
       }
 
       // Always buffer by session (for replay on session switch)
@@ -150,7 +151,7 @@ export function useBridge(): BridgeHookResult {
           const events = event.sessionId && dismissedSessionsRef.current.has(event.sessionId)
             ? sessionEventsRef.current.get(event.sessionId) ?? [simEvent]
             : [simEvent]
-          for (const buffered of events) pendingEventsRef.current.push(scopeSessionEvent(buffered))
+          for (const buffered of events) pendingEventsRef.current.push(scopeSessionEvent(buffered === simEvent ? buffered : historicalEvent(buffered)))
         } else {
           pendingEventsRef.current.push(simEvent)
         }
@@ -194,6 +195,37 @@ export function useBridge(): BridgeHookResult {
     // Event flushing is handled by the consumer (index.tsx effect) to avoid
     // races between auto-flush here and save/restore logic there.
     const unsubSession = bridge.onSession((type, data) => {
+      if (type === 'merged') {
+        const { sessionId, parentSessionId, events } = data as SessionMerge
+        const hadHistory = sessionEventsRef.current.has(sessionId)
+        sessionEventsRef.current.delete(sessionId)
+        dismissedSessionsRef.current.delete(sessionId)
+        setSessions(prev => prev.filter(session => session.id !== sessionId))
+        setSessionsWithActivity(prev => new Set([...prev].filter(id => id !== sessionId)))
+        if (selectedSessionIdRef.current === sessionId) {
+          selectedSessionIdRef.current = parentSessionId
+          setSelectedSessionId(parentSessionId)
+        }
+        if (events.length) {
+          const history = sessionEventsRef.current.get(parentSessionId) ?? []
+          history.push(...events as SimulationEvent[])
+          history.sort((a, b) => a.time - b.time)
+          sessionEventsRef.current.set(parentSessionId, history)
+        }
+        if (hadHistory || events.length) {
+          pendingEventsRef.current.length = 0
+          if (sessionViewModeRef.current === 'overview') {
+            for (const [id, history] of sessionEventsRef.current) {
+              if (!dismissedSessionsRef.current.has(id)) pendingEventsRef.current.push(...history.map(event => scopeSessionEvent(historicalEvent(event))))
+            }
+          } else {
+            pendingEventsRef.current.push(...(sessionEventsRef.current.get(selectedSessionIdRef.current ?? '') ?? []).map(historicalEvent))
+          }
+          setSessionResetVersion(version => version + 1)
+          setEventVersion(version => version + 1)
+        }
+        return
+      }
       if (type === 'reset') {
         // Panel was reopened — clear all stale state
         setSessions([])
@@ -225,7 +257,7 @@ export function useBridge(): BridgeHookResult {
           const buffered = sessionEventsRef.current.get(autoId)
           if (sessionViewModeRef.current === 'tabs' && buffered && buffered.length > 0) {
             pendingEventsRef.current.length = 0
-            pendingEventsRef.current.push(...buffered)
+            pendingEventsRef.current.push(...buffered.map(historicalEvent))
             setEventVersion(v => v + 1)
           }
         }
@@ -282,7 +314,7 @@ export function useBridge(): BridgeHookResult {
       // Clear in-place then push to preserve array identity for stale closures
       const buffered = sessionEventsRef.current.get(sessionId) || []
       pendingEventsRef.current.length = 0
-      pendingEventsRef.current.push(...buffered.slice(fromIndex))
+      pendingEventsRef.current.push(...buffered.slice(fromIndex).map(historicalEvent))
       setEventVersion(v => v + 1)
       // Clear activity indicator for selected session
       setSessionsWithActivity(prev => {

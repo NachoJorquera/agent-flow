@@ -47,6 +47,8 @@ interface Delegation {
   async: boolean
   complete: boolean
   summary?: string
+  childThreadId?: string
+  childSessionId?: string
 }
 
 function describe(tool: string, input: Record<string, unknown>, fallback: AgentProvider): Omit<Delegation, 'name' | 'parent' | 'complete'> & { title: string } | undefined {
@@ -108,6 +110,17 @@ export class DelegationTracker {
       const provider = agentProvider(data.model, data.providerInstanceId ?? data.provider)
       if (provider) child.provider = provider
       if (typeof data.model === 'string') child.model = data.model
+      const childThreadId = typeof data.childThreadId === 'string' ? data.childThreadId : undefined
+      const nativeId = typeof data.session_id === 'string' ? data.session_id
+        : typeof data.agent_id === 'string' ? data.agent_id : undefined
+      const childSessionId = nativeId ? child.provider === 'codex' ? `codex:${nativeId}` : nativeId : undefined
+      if ((childThreadId && childThreadId !== child.childThreadId) || (childSessionId && childSessionId !== child.childSessionId)) {
+        child.childThreadId = childThreadId ?? child.childThreadId
+        child.childSessionId = childSessionId ?? child.childSessionId
+        this.emit({ time: this.delegate.elapsed(), type: 'agent_link', payload: {
+          name: child.name, parent: child.parent, childThreadId: child.childThreadId, childSessionId: child.childSessionId,
+        } })
+      }
       if (provider || typeof data.model === 'string') {
         this.emit({ time: this.delegate.elapsed(), type: 'model_detected', payload: { agent: child.name, provider: child.provider, model: child.model } })
       }
@@ -172,7 +185,7 @@ export class DelegationTracker {
     const time = this.delegate.elapsed()
     return [
       { time, type: 'subagent_dispatch', payload: { parent: child.parent, child: child.name, task: child.task.slice(0, 2000) } },
-      { time, type: 'agent_spawn', payload: { name: child.name, parent: child.parent, task: child.task.slice(0, 2000), provider: child.provider, model: child.model } },
+      { time, type: 'agent_spawn', payload: { name: child.name, parent: child.parent, task: child.task.slice(0, 2000), provider: child.provider, model: child.model, childThreadId: child.childThreadId, childSessionId: child.childSessionId } },
     ]
   }
 

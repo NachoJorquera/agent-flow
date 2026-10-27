@@ -160,6 +160,7 @@ export class TranscriptParser {
       sessionId: parsed.sessionId as string,
       type: parsed.type as string,
       uuid: parsed.uuid as string | undefined,
+      isMeta: parsed.isMeta === true,
       message: msg,
     }
 
@@ -623,22 +624,22 @@ export class TranscriptParser {
     }
   }
 
-  /** Extract text content from a user transcript entry, skipping system-injected tags */
+  /** Extract a label from user text or a skill invocation, skipping injected skill instructions. */
   extractUserMessageText(entry: TranscriptEntry): string | null {
+    if (entry.isMeta) return null
     const msg = entry.message
     if (!msg) return null
-    if (typeof msg.content === 'string' && msg.content.trim()) {
-      const text = msg.content.trim()
-      if (!this.isSystemInjectedContent(text)) return text
-      return null
-    }
-    if (Array.isArray(msg.content)) {
-      for (const block of msg.content) {
-        if (block.type === 'text' && 'text' in block) {
-          const text = safeText(block)
-          if (text && !this.isSystemInjectedContent(text)) return text
-        }
+    const texts = typeof msg.content === 'string' ? [msg.content.trim()]
+      : Array.isArray(msg.content) ? msg.content.filter(block => block.type === 'text').map(safeText) : []
+    for (const text of texts) {
+      const command = text.match(/^<command-message>([\s\S]*?)<\/command-message>/)
+        ?? text.match(/^<command-name>([\s\S]*?)<\/command-name>/)
+      if (command) {
+        const name = command[1].trim().replace(/^\//, '')
+        if (name) return name
+        continue
       }
+      if (text && !text.startsWith('<command-') && !this.isSystemInjectedContent(text)) return text
     }
     return null
   }

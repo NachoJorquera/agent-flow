@@ -7,6 +7,7 @@ export function handleMessage(
   payload: Record<string, unknown>,
   currentTime: number,
   state: MutableEventState,
+  historical = false,
 ): void {
   const agentName = asString(payload.agent)
   const content = asString(payload.content)
@@ -34,7 +35,7 @@ export function handleMessage(
     const bubbleRole: 'user' | 'thinking' | 'assistant' = role === 'user' ? 'user' : role === 'thinking' ? 'thinking' : 'assistant'
     const updates: Partial<typeof msgAgent> = {}
 
-    {
+    if (!historical) {
       // Truncate thinking for graph bubbles (full text in message feed panel)
       const bubbleText = bubbleRole === 'thinking' ? content.slice(0, LABEL_LEN_BUBBLE) + (content.length > LABEL_LEN_BUBBLE ? '...' : '') : content
       // Dedup: skip if last bubble has the same text (dual event source race)
@@ -72,7 +73,6 @@ export function handleContextUpdate(
       ...agent,
       tokensUsed: tokens,
       contextBreakdown: breakdown || agent.contextBreakdown,
-      state: agent.state === 'complete' ? 'complete' : 'thinking'
     })
   }
 }
