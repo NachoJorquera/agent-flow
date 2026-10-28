@@ -4,12 +4,12 @@ import { execFileSync } from 'child_process'
 
 type Titles = Map<string, string>
 
-/** Read the saved names outside rollouts, where T3 and Codex keep session titles. */
+/** Read saved Codex names outside rollouts; T3 titles are applied by the service manager. */
 export class CodexSessionTitles {
   private readonly cache = new Map<string, { fingerprint: string; titles: Titles }>()
   private sources: Titles[] = []
 
-  constructor(private readonly codexHome: string, private readonly t3DataDir: string) {}
+  constructor(private readonly codexHome: string) {}
 
   refresh(): void {
     let databases: string[] = []
@@ -19,17 +19,6 @@ export class CodexSessionTitles {
     } catch { /* Codex may not have created its metadata directory yet. */ }
 
     this.sources = [
-      this.readDatabase(path.join(this.t3DataDir, 'statev2.sqlite'), [
-        `SELECT json_extract(p.payload_json, '$.nativeThreadRef.nativeId') AS id, t.title
-         FROM orchestration_v2_projection_provider_threads p
-         JOIN orchestration_v2_projection_threads t ON t.thread_id = p.thread_id
-         WHERE p.provider = 'codex' AND t.deleted_at IS NULL`,
-      ]),
-      this.readDatabase(path.join(this.t3DataDir, 'state.sqlite'), [
-        `SELECT s.provider_thread_id AS id, t.title
-         FROM projection_thread_sessions s JOIN projection_threads t ON t.thread_id = s.thread_id
-         WHERE s.provider_name = 'codex' AND t.deleted_at IS NULL`,
-      ]),
       this.readSource(path.join(this.codexHome, 'session_index.jsonl'), file => {
         const titles: Titles = new Map()
         for (const line of fs.readFileSync(file, 'utf8').split('\n')) {

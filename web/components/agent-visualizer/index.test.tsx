@@ -46,8 +46,8 @@ function connectBridge() {
     openFile: () => {}, dispose: () => {},
   })
   return {
-    emit: (sessionId: string, type: SimulationEvent['type'], payload: Record<string, unknown>, time = 0) => {
-      act(() => event({ sessionId, time, type, payload }))
+    emit: (sessionId: string, type: SimulationEvent['type'], payload: Record<string, unknown>, time = 0, historical?: boolean) => {
+      act(() => event({ sessionId, time, type, payload, historical }))
     },
     listSessions: () => act(() => session('list', [
       { id: 's1', label: 'One', status: 'active', startTime: 0, lastActivityTime: 2 },
@@ -158,7 +158,7 @@ describe('session view integration', () => {
     bridge.listSessions()
     bridge.emit('s1', 'agent_spawn', { name: 'orchestrator', isMain: true, provider: 'codex' })
     for (let i = 0; i < 20; i++) {
-      bridge.emit('s1', 'message', { agent: 'orchestrator', role: 'assistant', content: `Old message ${i}`, historical: true }, 600)
+      bridge.emit('s1', 'message', { agent: 'orchestrator', role: 'assistant', content: `Old message ${i}` }, 600, true)
     }
     startPlayback()
     expect(graph().agents[0].messageBubbles).toEqual([])

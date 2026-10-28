@@ -50,8 +50,8 @@ export type EventCallback = (event: import('./bridge-types').AgentEvent) => void
 export type StatusCallback = (status: import('./bridge-types').ConnectionStatus, source: string) => void
 export type ConfigCallback = (config: VisualizerConfig) => void
 export type SessionCallback = (
-  type: 'list' | 'started' | 'ended' | 'updated' | 'reset',
-  data: import('./bridge-types').SessionInfo[] | import('./bridge-types').SessionInfo | string | { sessionId: string; label: string },
+  type: 'list' | 'started' | 'ended' | 'updated' | 'reset' | 'merged',
+  data: import('./bridge-types').SessionInfo[] | import('./bridge-types').SessionInfo | import('./bridge-types').SessionMerge | string | { sessionId: string; label: string },
 ) => void
 
 export interface BridgeAdapter {

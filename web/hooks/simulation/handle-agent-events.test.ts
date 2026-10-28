@@ -14,7 +14,7 @@ describe('provider identity in agent graphs', () => {
   it('keeps restored messages in the conversation without creating new bubbles', () => {
     let state = processEvent({ time: 0, type: 'agent_spawn', payload: { name: 'orchestrator', isMain: true, provider: 'codex' } }, createEmptyState(), context)
     for (const [i, role] of ['user', 'assistant', 'thinking'].entries()) {
-      state = processEvent({ time: i, type: 'message', payload: { agent: 'orchestrator', role, content: `Restored ${role}`, historical: true } }, state, context)
+      state = processEvent({ time: i, type: 'message', historical: true, payload: { agent: 'orchestrator', role, content: `Restored ${role}` } }, state, context)
     }
     expect(state.agents.get('orchestrator')?.messageBubbles).toEqual([])
     expect(state.conversations.get('orchestrator')?.map(message => message.content)).toEqual(['Restored user', 'Restored assistant', 'Restored thinking'])
@@ -42,5 +42,36 @@ describe('provider identity in agent graphs', () => {
     expect(state.agents.get('child')?.provider).toBe('claude')
     expect(state.agents.get('child')?.tokensMax).toBe(200000)
     expect(state.agents.get('orchestrator')?.provider).toBe('codex')
+  })
+
+  it('keeps one linked reviewer and its history when its native transcript confirms the spawn', () => {
+    let state = processEvent({ time: 0, type: 'agent_spawn', payload: { name: 'orchestrator', isMain: true, provider: 'claude' } }, createEmptyState(), context)
+    const reviewer = { time: 1, type: 'agent_spawn' as const, payload: { name: 'Sol review', parent: 'orchestrator', provider: 'codex' } }
+    state = processEvent(reviewer, state, context)
+    state = processEvent({ time: 2, type: 'message', payload: { agent: 'Sol review', role: 'assistant', content: 'Reviewing the diff' } }, state, context)
+    const history = state.conversations.get('Sol review')
+    state = processEvent(reviewer, state, context)
+    expect(state.agents.size).toBe(2)
+    expect(state.edges.filter(edge => edge.type === 'parent-child')).toHaveLength(1)
+    expect(state.conversations.get('Sol review')).toBe(history)
+    expect(state.agents.get('Sol review')?.messageBubbles).toHaveLength(1)
+    state = processEvent({ time: 3, type: 'agent_complete', payload: { name: 'Sol review' } }, state, context)
+    state = processEvent(reviewer, state, context)
+    expect(state.agents.get('Sol review')?.state).toBe('complete')
+    state = processEvent({ ...reviewer, payload: { ...reviewer.payload, resumed: true } }, state, context)
+    expect(state.agents.get('Sol review')?.state).toBe('idle')
+    expect(state.conversations.get('Sol review')).toBe(history)
+  })
+
+  it('does not reactivate an idle or completed agent when delayed token or idle events arrive', () => {
+    let state = processEvent({ time: 0, type: 'agent_spawn', payload: { name: 'orchestrator', isMain: true, provider: 'codex' } }, createEmptyState(), context)
+    state = processEvent({ time: 1, type: 'agent_idle', payload: { name: 'orchestrator', turnComplete: true } }, state, context)
+    state = processEvent({ time: 2, type: 'context_update', payload: { agent: 'orchestrator', tokens: 68000 } }, state, context)
+    expect(state.agents.get('orchestrator')?.state).toBe('idle')
+    state = processEvent({ time: 3, type: 'agent_complete', payload: { name: 'orchestrator' } }, state, context)
+    state = processEvent({ time: 4, type: 'agent_idle', payload: { name: 'orchestrator', turnComplete: true } }, state, context)
+    state = processEvent({ time: 5, type: 'context_update', payload: { agent: 'orchestrator', tokens: 69000 } }, state, context)
+    expect(state.agents.get('orchestrator')?.state).toBe('complete')
+    expect(state.agents.get('orchestrator')?.tokensUsed).toBe(69000)
   })
 })

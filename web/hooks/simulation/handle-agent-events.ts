@@ -52,6 +52,18 @@ export function handleAgentSpawn(
   const provider = payload.provider === 'codex' || payload.provider === 'claude'
     ? payload.provider : providerFromModel(model) ?? (parentId ? state.agents.get(parentId)?.provider : isMain ? 'claude' : undefined)
 
+  // A delegated transcript can confirm a node already created by its parent's tool call.
+  // Preserve the node's history, position and edge when both sources announce the same agent.
+  const existing = state.agents.get(name)
+  if (existing) {
+    state.agents.set(name, {
+      ...existing, provider: provider ?? existing.provider,
+      tokensMax: model ? ctx.getContextWindowSize(model) : existing.tokensMax,
+      ...(existing.state === 'complete' && payload.resumed === true ? { state: 'idle', completeTime: undefined } : {}),
+    })
+    return
+  }
+
   let x = 0, y = 0
   if (isMain && typeof payload.sessionId === 'string') {
     const slot = freeRootSlot(state.agents, name)
@@ -197,6 +209,7 @@ export function handleAgentIdle(
 ): void {
   const idleName = asString(payload.name)
   const idleAgent = state.agents.get(idleName)
+  if (idleAgent?.state === 'complete') return
   if (idleAgent && payload.turnComplete === true) {
     state.agents.set(idleName, { ...idleAgent, state: 'idle', currentTool: undefined })
   } else if (idleAgent && (idleAgent.state === 'tool_calling' || idleAgent.state === 'waiting_permission')) {

@@ -1,7 +1,7 @@
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { asHistoricalEvent, type AgentEvent, type SessionInfo } from './protocol'
+import type { AgentEvent, SessionInfo } from './protocol'
 import { ACTIVE_SESSION_AGE_S, INACTIVITY_TIMEOUT_MS, ORCHESTRATOR_NAME, SCAN_INTERVAL_MS } from './constants'
 import { CodexTranscriptParser } from './codex-transcript-parser'
 import { CodexSessionTitles } from './codex-session-titles'
@@ -13,6 +13,10 @@ import type { SessionLifecycle, SessionSource } from './session-source'
 const log = createLogger('CodexSessionWatcher')
 const MAX_REPLAY_EVENTS = 1000
 
+function historicalEvent(event: AgentEvent): AgentEvent {
+  return event.type === 'message' && !event.historical ? { ...event, historical: true } : event
+}
+
 interface CodexSession {
   info: SessionInfo
   filePath: string
@@ -21,8 +25,7 @@ interface CodexSession {
   watcher: fs.FSWatcher | null
   events: AgentEvent[]
   bootstrapping: boolean
-  /** Turn completion only idles the node; inactivity completes it for removal. */
-  timedOut: boolean
+  expired: boolean
 }
 
 /** Discovers CLI, IDE and desktop Codex rollouts under CODEX_HOME/sessions. */
@@ -41,9 +44,9 @@ export class CodexSessionWatcher implements SessionSource {
   readonly onSessionDetected = this.detected.event
   readonly onSessionLifecycle = this.lifecycle.event
 
-  constructor(options?: { sessionsDir?: string; t3DataDir?: string }) {
+  constructor(options?: { sessionsDir?: string }) {
     this.sessionsDir = options?.sessionsDir ?? path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'sessions')
-    this.titles = new CodexSessionTitles(path.dirname(this.sessionsDir), options?.t3DataDir ?? path.join(os.homedir(), '.t3', 'userdata'))
+    this.titles = new CodexSessionTitles(path.dirname(this.sessionsDir))
   }
 
   start(): void {
@@ -58,9 +61,7 @@ export class CodexSessionWatcher implements SessionSource {
     for (const session of this.sessions.values()) {
       this.updateLabel(session)
       this.readSession(session)
-      if (!session.timedOut && Date.now() - session.info.lastActivityTime >= INACTIVITY_TIMEOUT_MS) {
-        this.completeInactiveSession(session)
-      }
+      this.expireSession(session)
     }
     if (!fs.existsSync(this.sessionsDir)) return
     if (!this.rootWatcher) {
@@ -84,7 +85,7 @@ export class CodexSessionWatcher implements SessionSource {
   buildReplayStartEvents(sessionIds?: string[]): Array<{ sessionId: string; event: AgentEvent }> {
     return Array.from(this.sessions.values())
       .filter(session => !sessionIds || sessionIds.includes(session.info.id))
-      .flatMap(session => [this.spawnEvent(session), ...session.events].map(event => ({ sessionId: session.info.id, event })))
+      .flatMap(session => [this.spawnEvent(session), ...session.events].map(event => ({ sessionId: session.info.id, event: historicalEvent(event) })))
   }
 
   private scanDirectory(directory: string, depth: number): void {
@@ -118,7 +119,7 @@ export class CodexSessionWatcher implements SessionSource {
         startTime: Number.isFinite(timestamp) ? timestamp : Date.now(),
         lastActivityTime: initial.mtime,
       },
-      filePath, offset: initial.offset, watcher: null, events: [], bootstrapping: true, timedOut: false,
+      filePath, offset: initial.offset, watcher: null, events: [], bootstrapping: true, expired: false,
       parser: new CodexTranscriptParser({
         emit: event => this.emit(session, event),
         elapsed: () => Math.max(0, (Date.now() - session.info.startTime) / 1000),
@@ -130,6 +131,7 @@ export class CodexSessionWatcher implements SessionSource {
     this.files.add(filePath)
     for (const line of initial.lines) session.parser.processLine(line)
     this.updateLabel(session)
+    this.expireSession(session)
     session.bootstrapping = false
     this.detected.fire(sessionId)
     this.fireLifecycle(session, 'started')
@@ -159,16 +161,14 @@ export class CodexSessionWatcher implements SessionSource {
   }
 
   private setTurnState(session: CodexSession, active: boolean): void {
+    if (active && (session.expired || session.info.status === 'completed')) {
+      session.expired = false
+      const spawn = this.spawnEvent(session)
+      this.emit(session, { ...spawn, payload: { ...spawn.payload, resumed: true }, time: Math.max(0, (Date.now() - session.info.startTime) / 1000) })
+    }
     const status = active ? 'active' : 'completed'
     if (session.info.status === status) return
     session.info.status = status
-    if (active && session.timedOut) {
-      session.timedOut = false
-      this.emit(session, {
-        ...this.spawnEvent(session),
-        time: Math.max(0, (Date.now() - session.info.startTime) / 1000),
-      })
-    }
     if (!active) {
       this.emit(session, {
         time: Math.max(0, (Date.now() - session.info.startTime) / 1000),
@@ -184,15 +184,14 @@ export class CodexSessionWatcher implements SessionSource {
     }
   }
 
-  private completeInactiveSession(session: CodexSession): void {
-    const wasActive = session.info.status === 'active'
-    session.timedOut = true
-    session.info.status = 'completed'
+  private expireSession(session: CodexSession): void {
+    if (session.expired || Date.now() - session.info.lastActivityTime < INACTIVITY_TIMEOUT_MS) return
+    this.setTurnState(session, false)
+    session.expired = true
     this.emit(session, {
       time: Math.max(0, (Date.now() - session.info.startTime) / 1000),
       type: 'agent_complete', payload: { name: ORCHESTRATOR_NAME },
     })
-    if (wasActive) this.fireLifecycle(session, 'ended')
   }
 
   private spawnEvent(session: CodexSession): AgentEvent {
@@ -203,7 +202,8 @@ export class CodexSessionWatcher implements SessionSource {
   }
 
   private emit(session: CodexSession, event: AgentEvent): void {
-    if (session.bootstrapping) event = asHistoricalEvent(event)
+    // Keep past conversation entries for Chat/Review without announcing them as new bubbles.
+    if (session.bootstrapping) event = historicalEvent(event)
     session.events.push(event)
     if (session.events.length > MAX_REPLAY_EVENTS) session.events.shift()
     if (!session.bootstrapping) this.events.fire({ ...event, sessionId: session.info.id })

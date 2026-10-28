@@ -21,7 +21,7 @@ describe('CodexSessionWatcher', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-flow-codex-'))
-    watcher = new CodexSessionWatcher({ sessionsDir: path.join(root, 'sessions'), t3DataDir: path.join(root, 't3') })
+    watcher = new CodexSessionWatcher({ sessionsDir: path.join(root, 'sessions') })
     events = []
     lifecycle = []
     watcher.onEvent(event => events.push(event))
@@ -93,16 +93,54 @@ describe('CodexSessionWatcher', () => {
     expect(lifecycle).toContainEqual({ type: 'updated', sessionId: 'codex:late', label: 'Arreglar 🚀' })
   })
 
-  it('restores old messages without showing them as live bubbles, while new messages remain live', () => {
-    const file = rollout('history', message('user', 'Old request', 'user-1') + message('assistant', 'Old answer', 'assistant-1'))
+  it('loads old conversation as history while keeping new messages live and replay safe', () => {
+    const file = rollout('history',
+      message('user', 'Previous request', 'user-1') +
+      line('response_item', { type: 'reasoning', id: 'thinking-1', summary: [{ type: 'summary_text', text: 'Previous reasoning' }] }) +
+      message('assistant', 'Previous reply', 'assistant-1') +
+      line('event_msg', { type: 'task_complete' }),
+    )
     watcher.start()
-    expect(events.filter(event => event.type === 'message')).toHaveLength(2)
-    expect(events.filter(event => event.type === 'message').every(event => event.payload.historical === true)).toBe(true)
+    const oldMessages = events.filter(event => event.type === 'message')
+    expect(oldMessages.map(event => event.payload.content)).toEqual(['Previous request', 'Previous reasoning', 'Previous reply'])
+    expect(oldMessages.every(event => event.historical === true)).toBe(true)
 
-    fs.appendFileSync(file, message('user', 'New request', 'user-2'))
+    fs.appendFileSync(file, line('event_msg', { type: 'task_started' }) + message('assistant', 'New live reply', 'assistant-2'))
     watcher.forceScan()
-    expect(events.at(-1)?.payload).toMatchObject({ content: 'New request' })
-    expect(events.at(-1)?.payload.historical).toBeUndefined()
+    const live = events.find(event => event.type === 'message' && event.payload.content === 'New live reply')!
+    expect(live.historical).toBeUndefined()
+    const replay = watcher.buildReplayStartEvents().filter(({ event }) => event.type === 'message')
+    expect(replay).toHaveLength(4)
+    expect(replay.every(({ event }) => event.historical === true)).toBe(true)
+    expect(replay.at(-1)?.event.payload).toBe(live.payload)
+    expect(live.historical).toBeUndefined()
+  })
+
+  it.each([' ', '\n'])('excludes image metadata from the provisional title with separator %j', separator => {
+    const prompt = '[Image: Screenshot.png; ref=image_123]' + separator +
+      'Ajustar títulos de nodos\n\n<t3_context version="1">\n<context kind="image">image metadata</context>\n</t3_context>\n' +
+      '[Attached image "Screenshot.png" is saved at: /tmp/Screenshot.png]'
+    rollout('image', message('user', prompt, 'image-message'))
+    watcher.start()
+
+    expect(watcher.getActiveSessions()[0].label).toBe('Ajustar títulos de nodos')
+    expect(events).toContainEqual(expect.objectContaining({ type: 'message', payload: expect.objectContaining({ content: prompt }) }))
+
+    watcher.dispose()
+    watcher = new CodexSessionWatcher({ sessionsDir: path.join(root, 'sessions') })
+    watcher.start()
+    expect(watcher.getActiveSessions()[0].label).toBe('Ajustar títulos de nodos')
+  })
+
+  it('waits for user text when the first message only contains an image', () => {
+    const file = rollout('image-only', message('user', '[Image: Screenshot.png; ref=image_123]\n<t3_context version="1">image metadata</t3_context>\n[Attached image "Screenshot.png" is saved at: /tmp/Screenshot.png]', 'image-message'))
+    watcher.start()
+    expect(watcher.getActiveSessions()[0].label).toBe('my-app')
+
+    fs.appendFileSync(file, message('user', 'Revisar esta captura', 'caption'))
+    watcher.forceScan()
+    expect(watcher.getActiveSessions()[0].label).toBe('Revisar esta captura')
+    expect(lifecycle).toContainEqual({ type: 'updated', sessionId: 'codex:image-only', label: 'Revisar esta captura' })
   })
 
   it('prefers saved session names over the initial prompt and detects a rename without new transcript content', () => {
@@ -132,67 +170,58 @@ describe('CodexSessionWatcher', () => {
     expect(watcher.getActiveSessions().map(session => session.id)).toContain('codex:old')
   })
 
-  it.each(['task_complete', 'turn_complete', 'turn_aborted', undefined])('expires an inactive node after %s, including its replay history', (completion) => {
-    rollout('inactive', message('user', 'First task', 'user-1') + (completion ? line('event_msg', { type: completion }) : ''))
-    watcher.start()
-    const expiresAt = Math.ceil(watcher.getActiveSessions()[0].lastActivityTime) + INACTIVITY_TIMEOUT_MS
-
-    vi.setSystemTime(expiresAt - 1)
-    watcher.forceScan()
-    expect(events.filter(event => event.type === 'agent_complete')).toHaveLength(0)
-
-    vi.setSystemTime(expiresAt)
-    watcher.forceScan()
-    expect(events.filter(event => event.type === 'agent_complete')).toEqual([
-      expect.objectContaining({ sessionId: 'codex:inactive', payload: { name: ORCHESTRATOR_NAME } }),
-    ])
-    expect(watcher.getActiveSessions()[0].status).toBe('completed')
-    expect(watcher.buildReplayStartEvents().at(-1)?.event.type).toBe('agent_complete')
-
-    watcher.forceScan()
-    expect(events.filter(event => event.type === 'agent_complete')).toHaveLength(1)
-  })
-
-  it('recreates an expired node before delivering a resumed turn, and can expire it again', () => {
+  it('ends inactive sessions and reactivates them when another turn starts', () => {
     const file = rollout('resume', message('user', 'First task', 'user-1'))
     watcher.start()
     vi.setSystemTime(watcher.getActiveSessions()[0].lastActivityTime + INACTIVITY_TIMEOUT_MS + 1)
     watcher.forceScan()
     expect(watcher.getActiveSessions()[0].status).toBe('completed')
+    expect(events.filter(event => event.type === 'agent_complete')).toHaveLength(1)
     fs.appendFileSync(file, line('event_msg', { type: 'task_started' }) + message('user', 'Second task', 'user-2'))
     fs.utimesSync(file, new Date(), new Date())
     watcher.forceScan()
     expect(watcher.getActiveSessions()[0].status).toBe('active')
     expect(lifecycle.map(event => event.type)).toEqual(['started', 'ended', 'started'])
     expect(events.filter(event => event.type === 'agent_spawn')).toHaveLength(2)
-    expect(events.slice(-2)).toEqual([
-      expect.objectContaining({ type: 'agent_spawn', payload: expect.objectContaining({ name: ORCHESTRATOR_NAME, provider: 'codex' }) }),
-      expect.objectContaining({ type: 'message', payload: expect.objectContaining({ content: 'Second task' }) }),
-    ])
-
-    vi.setSystemTime(Math.ceil(watcher.getActiveSessions()[0].lastActivityTime) + INACTIVITY_TIMEOUT_MS)
-    watcher.forceScan()
-    expect(events.filter(event => event.type === 'agent_complete')).toHaveLength(2)
   })
 
-  it('keeps a node and its history when another turn starts before the inactivity timeout', () => {
-    const file = rollout('quick-resume', message('user', 'First task', 'user-1') + line('event_msg', { type: 'task_complete' }))
+  it('retires a finished turn after inactivity and retains the terminal event on window reopen', () => {
+    rollout('finished', message('user', 'Review the diff', 'user-1') + line('event_msg', { type: 'task_complete' }))
     watcher.start()
-    vi.setSystemTime(watcher.getActiveSessions()[0].lastActivityTime + INACTIVITY_TIMEOUT_MS - 1)
-    fs.appendFileSync(file, line('event_msg', { type: 'task_started' }) + message('user', 'Second task', 'user-2'))
-    fs.utimesSync(file, new Date(), new Date())
+    expect(events.at(-1)?.type).toBe('agent_idle')
+    const lastActivity = watcher.getActiveSessions()[0].lastActivityTime
+    vi.setSystemTime(lastActivity + INACTIVITY_TIMEOUT_MS + 1)
     watcher.forceScan()
+    watcher.forceScan()
+    expect(events.at(-1)).toMatchObject({ type: 'agent_complete', payload: { name: ORCHESTRATOR_NAME } })
+    expect(events.filter(event => event.type === 'agent_complete')).toHaveLength(1)
+    expect(watcher.buildReplayStartEvents().at(-1)?.event.type).toBe('agent_complete')
+    expect(lifecycle.map(event => event.type)).toEqual(['started', 'ended'])
+  })
 
+  it('announces a resumed turn so a completed delegated reviewer can receive work again', () => {
+    const file = rollout('follow-up', message('user', 'First review', 'user-1') + line('event_msg', { type: 'task_complete' }))
+    watcher.start()
+    fs.appendFileSync(file, line('event_msg', { type: 'task_started' }) + message('user', 'Review again', 'user-2'))
+    watcher.forceScan()
+    expect(events.filter(event => event.type === 'agent_spawn')).toHaveLength(2)
     expect(watcher.getActiveSessions()[0].status).toBe('active')
-    expect(events.filter(event => event.type === 'agent_spawn')).toHaveLength(1)
-    expect(events.filter(event => event.type === 'agent_complete')).toHaveLength(0)
-    expect(events.filter(event => event.type === 'message').map(event => event.payload.content)).toEqual(['First task', 'Second task'])
+    expect(lifecycle.map(event => event.type)).toEqual(['started', 'ended', 'started'])
+  })
+
+  it('retires a recently discovered transcript that has already passed the inactivity timeout', () => {
+    const file = rollout('already-finished', message('user', 'Review', 'user-1') + line('event_msg', { type: 'task_complete' }))
+    const idleTime = new Date(Date.now() - INACTIVITY_TIMEOUT_MS - 1000)
+    fs.utimesSync(file, idleTime, idleTime)
+    watcher.start()
+    expect(events.at(-1)?.type).toBe('agent_complete')
+    expect(watcher.buildReplayStartEvents().at(-1)?.event.type).toBe('agent_complete')
   })
 
   it('uses CODEX_HOME without requiring a Claude directory', () => {
     watcher.dispose()
     vi.stubEnv('CODEX_HOME', root)
-    watcher = new CodexSessionWatcher({ t3DataDir: path.join(root, 't3') })
+    watcher = new CodexSessionWatcher()
     rollout('custom-home')
     watcher.start()
     expect(watcher.getActiveSessions()[0]).toMatchObject({ id: 'codex:custom-home', provider: 'codex' })

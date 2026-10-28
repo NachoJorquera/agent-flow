@@ -7,32 +7,23 @@ import { CodexSessionTitles } from './codex-session-titles'
 
 describe('saved Codex session titles', () => {
   let root: string
-  let t3Dir: string
   let titles: CodexSessionTitles
   const sql = (file: string, query: string) => execFileSync('/usr/bin/sqlite3', [file, query])
 
   beforeEach(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-flow-titles-'))
-    t3Dir = path.join(root, 't3')
-    fs.mkdirSync(t3Dir)
-    titles = new CodexSessionTitles(root, t3Dir)
+    titles = new CodexSessionTitles(root)
   })
   afterEach(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  it('matches T3 titles by native session id and prefers them over Codex prompt-derived titles', () => {
-    sql(path.join(root, 'state_5.sqlite'), `CREATE TABLE threads (id TEXT, title TEXT, name TEXT);
-      INSERT INTO threads VALUES ('native-1', 'Initial prompt', NULL), ('native-2', 'Other prompt', 'Saved Codex name');`)
-    const db = path.join(t3Dir, 'statev2.sqlite')
-    sql(db, `CREATE TABLE orchestration_v2_projection_threads (thread_id TEXT, title TEXT, deleted_at TEXT);
-      CREATE TABLE orchestration_v2_projection_provider_threads (thread_id TEXT, provider TEXT, payload_json TEXT);
-      INSERT INTO orchestration_v2_projection_threads VALUES ('t3-1', 'Horizontal nodes', NULL);
-      INSERT INTO orchestration_v2_projection_provider_threads VALUES ('t3-1', 'codex', '{"nativeThreadRef":{"nativeId":"native-1"}}');`)
+  it('reads saved names and detects renames in Codex metadata', () => {
+    const db = path.join(root, 'state_5.sqlite')
+    sql(db, `CREATE TABLE threads (id TEXT, title TEXT, name TEXT);
+      INSERT INTO threads VALUES ('native-1', 'Initial prompt', 'Saved name');`)
     titles.refresh()
-    expect(titles.get('native-1')).toBe('Horizontal nodes')
-    expect(titles.get('native-2')).toBe('Saved Codex name')
+    expect(titles.get('native-1')).toBe('Saved name')
     expect(titles.get('unknown')).toBeUndefined()
-
-    sql(db, "UPDATE orchestration_v2_projection_threads SET title = 'Renamed layout'")
+    sql(db, "UPDATE threads SET name = 'Renamed layout'")
     titles.refresh()
     expect(titles.get('native-1')).toBe('Renamed layout')
   })
