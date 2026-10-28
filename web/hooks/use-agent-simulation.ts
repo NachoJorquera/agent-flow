@@ -117,8 +117,8 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
       return false
     }
 
-    // Compute outward direction: away from parent (or default upward for main agent)
-    let outAngle = -Math.PI / 2 // default: upward
+    // Compute outward direction: away from parent (or default leftward for main agent)
+    let outAngle = -Math.PI // default: leftward
     if (agent.parentId) {
       const parent = agents.get(agent.parentId)
       if (parent) {

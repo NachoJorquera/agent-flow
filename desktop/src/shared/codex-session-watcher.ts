@@ -4,6 +4,7 @@ import * as path from 'path'
 import type { AgentEvent, SessionInfo } from './protocol'
 import { ACTIVE_SESSION_AGE_S, INACTIVITY_TIMEOUT_MS, ORCHESTRATOR_NAME, SCAN_INTERVAL_MS } from './constants'
 import { CodexTranscriptParser } from './codex-transcript-parser'
+import { CodexSessionTitles } from './codex-session-titles'
 import { TypedEventEmitter } from './event-emitter'
 import { readCompleteFileLines } from './fs-utils'
 import { createLogger } from './logger'
@@ -35,6 +36,7 @@ export class CodexSessionWatcher implements SessionSource {
   private scanTimer: NodeJS.Timeout | null = null
   private debounceTimer: NodeJS.Timeout | null = null
   private readonly sessionsDir: string
+  private readonly titles: CodexSessionTitles
   private readonly events = new TypedEventEmitter<AgentEvent>()
   private readonly detected = new TypedEventEmitter<string>()
   private readonly lifecycle = new TypedEventEmitter<SessionLifecycle>()
@@ -44,6 +46,7 @@ export class CodexSessionWatcher implements SessionSource {
 
   constructor(options?: { sessionsDir?: string }) {
     this.sessionsDir = options?.sessionsDir ?? path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'sessions')
+    this.titles = new CodexSessionTitles(path.dirname(this.sessionsDir))
   }
 
   start(): void {
@@ -53,8 +56,10 @@ export class CodexSessionWatcher implements SessionSource {
   }
 
   forceScan(): void {
+    this.titles.refresh()
     // Always poll known files, including resumed sessions in older date directories.
     for (const session of this.sessions.values()) {
+      this.updateLabel(session)
       this.readSession(session)
       this.expireSession(session)
     }
@@ -118,16 +123,14 @@ export class CodexSessionWatcher implements SessionSource {
       parser: new CodexTranscriptParser({
         emit: event => this.emit(session, event),
         elapsed: () => Math.max(0, (Date.now() - session.info.startTime) / 1000),
-        onLabel: label => {
-          session.info.label = label
-          if (!session.bootstrapping) this.fireLifecycle(session, 'updated')
-        },
+        onLabel: () => this.updateLabel(session),
         onTurnState: active => this.setTurnState(session, active),
       }),
     }
     this.sessions.set(sessionId, session)
     this.files.add(filePath)
     for (const line of initial.lines) session.parser.processLine(line)
+    this.updateLabel(session)
     this.expireSession(session)
     session.bootstrapping = false
     this.detected.fire(sessionId)
@@ -148,6 +151,13 @@ export class CodexSessionWatcher implements SessionSource {
       session.info.lastActivityTime = result.mtime
       for (const line of result.lines) session.parser.processLine(line)
     } catch { /* a rollout may be moved to archived_sessions while being watched */ }
+  }
+
+  private updateLabel(session: CodexSession): void {
+    const label = this.titles.get(session.info.id.slice('codex:'.length)) ?? session.parser.label
+    if (label === session.info.label) return
+    session.info.label = label
+    if (!session.bootstrapping) this.fireLifecycle(session, 'updated')
   }
 
   private setTurnState(session: CodexSession, active: boolean): void {

@@ -20,8 +20,10 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 /** Position of the nth slot on the golden-angle spiral; slot 0 is the origin and no two slots
  *  are closer than SESSION_LAYOUT.spacing. */
 function rootSlotPosition(slot: number): { x: number; y: number } {
+  if (slot === 0) return { x: 0, y: 0 }
   const radius = SESSION_LAYOUT.spacing * Math.sqrt(slot)
-  const angle = slot * GOLDEN_ANGLE
+  // Rotate the layout 90° counterclockwise to use the viewport's width.
+  const angle = slot * GOLDEN_ANGLE - Math.PI / 2
   return { x: radius * Math.cos(angle), y: radius * Math.sin(angle) }
 }
 
@@ -81,9 +83,9 @@ export function handleAgentSpawn(
 
       let angle: number
       if (siblingAngles.length === 0) {
-        // First child: use hash-based angle
+        // First child: use the same quarter-turn as the session roots.
         const hash = name.split('').reduce((h, c) => ((h << 5) - h) + c.charCodeAt(0), 0)
-        angle = (Math.abs(hash) % 360) * (Math.PI / 180)
+        angle = (Math.abs(hash) % 360) * (Math.PI / 180) - Math.PI / 2
       } else {
         // Find the largest angular gap between existing siblings and place in the middle
         siblingAngles.sort((a, b) => a - b)

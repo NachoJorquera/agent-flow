@@ -32,6 +32,8 @@ Delegated provider transcripts are linked to their parent's reviewer node using 
 
 If you use a custom `CODEX_HOME`, launch Agent Flow with that environment variable set; it scans `$CODEX_HOME/sessions`. Only local sessions with transcript activity in the last 10 minutes are discovered. Older sessions are picked up when their transcript changes again. Cloud-only sessions and sessions without persisted local transcripts are not discovered.
 
+Session names come from saved T3 or Codex metadata when available and update after a rename. On startup and window reopening, messages are restored in the chat without replaying the history as new canvas bubbles.
+
 ### Mixed-provider agents
 
 Each agent and subagent uses its own Claude or OpenAI logo. Provider identity comes from the model and invocation metadata: native Claude `Agent`/`Task` calls, Codex `spawn_agent`, T3 `delegate_task`, and direct `codex exec` or `claude --print` commands. This supports workflows such as sol-loop, Dredd, and council in either direction.

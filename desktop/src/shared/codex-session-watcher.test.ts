@@ -143,6 +143,21 @@ describe('CodexSessionWatcher', () => {
     expect(lifecycle).toContainEqual({ type: 'updated', sessionId: 'codex:image-only', label: 'Revisar esta captura' })
   })
 
+  it('prefers saved session names over the initial prompt and detects a rename without new transcript content', () => {
+    const index = path.join(root, 'session_index.jsonl')
+    fs.writeFileSync(index, JSON.stringify({ id: 'named', thread_name: 'Horizontal nodes' }) + '\n')
+    rollout('named', message('user', 'A long initial prompt that is not the session name', 'user-1'))
+    watcher.start()
+    expect(watcher.getActiveSessions()[0].label).toBe('Horizontal nodes')
+    expect(events[0].payload.task).toBe('Horizontal nodes')
+
+    fs.appendFileSync(index, JSON.stringify({ id: 'named', thread_name: 'Renamed graph' }) + '\n')
+    watcher.forceScan()
+    expect(watcher.getActiveSessions()[0].label).toBe('Renamed graph')
+    expect(lifecycle.at(-1)).toEqual({ type: 'updated', sessionId: 'codex:named', label: 'Renamed graph' })
+    expect(watcher.buildReplayStartEvents()[0].event.payload.task).toBe('Renamed graph')
+  })
+
   it('ignores stale history but detects sessions resumed in old date directories', () => {
     const old = rollout('old', '', '2025/01/01')
     const staleTime = new Date(Date.now() - (ACTIVE_SESSION_AGE_S + 60) * 1000)

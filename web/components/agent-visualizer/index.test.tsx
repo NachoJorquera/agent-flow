@@ -46,8 +46,8 @@ function connectBridge() {
     openFile: () => {}, dispose: () => {},
   })
   return {
-    emit: (sessionId: string, type: SimulationEvent['type'], payload: Record<string, unknown>, time = 0) => {
-      act(() => event({ sessionId, time, type, payload }))
+    emit: (sessionId: string, type: SimulationEvent['type'], payload: Record<string, unknown>, time = 0, historical?: boolean) => {
+      act(() => event({ sessionId, time, type, payload, historical }))
     },
     listSessions: () => act(() => session('list', [
       { id: 's1', label: 'One', status: 'active', startTime: 0, lastActivityTime: 2 },
@@ -150,5 +150,28 @@ describe('session view integration', () => {
     bridge.emit('s2', 'message', { agent: 'orchestrator', role: 'assistant', content: 'Working' }, 2)
     nextFrame()
     expect(graph().currentTime).toBeGreaterThanOrEqual(901)
+  })
+
+  it('restores message history silently and only shows bubbles for new live messages', () => {
+    const bridge = connectBridge()
+    render(<AgentVisualizer />)
+    bridge.listSessions()
+    bridge.emit('s1', 'agent_spawn', { name: 'orchestrator', isMain: true, provider: 'codex' })
+    for (let i = 0; i < 20; i++) {
+      bridge.emit('s1', 'message', { agent: 'orchestrator', role: 'assistant', content: `Old message ${i}` }, 600, true)
+    }
+    startPlayback()
+    expect(graph().agents[0].messageBubbles).toEqual([])
+
+    bridge.emit('s1', 'message', { agent: 'orchestrator', role: 'assistant', content: 'New live message' }, 601)
+    nextFrame()
+    expect(graph().agents[0].messageBubbles.map(bubble => bubble.text)).toEqual(['New live message'])
+
+    bridge.setMode('tabs')
+    startPlayback()
+    expect(graph().agents[0].messageBubbles).toEqual([])
+    bridge.setMode('overview')
+    startPlayback()
+    expect(graph().agents[0].messageBubbles).toEqual([])
   })
 })
