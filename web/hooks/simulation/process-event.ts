@@ -77,7 +77,7 @@ export function processEvent(event: SimulationEvent, prev: SimulationState, ctx:
         case 'model_detected':    handleModelDetected(event.payload, state, ctx); break
         case 'tool_call_start':   handleToolCallStart(event.payload, prev.currentTime, state, ctx); break
         case 'tool_call_end':     handleToolCallEnd(event.payload, prev.currentTime, state, ctx); break
-        case 'message':           handleMessage(event.payload, prev.currentTime, state); break
+        case 'message':           handleMessage(event.payload, prev.currentTime, state, event.historical === true); break
         case 'context_update':    handleContextUpdate(event.payload, state); break
         case 'subagent_dispatch': handleSubagentDispatch(event.payload, prev.currentTime, state); break
         case 'subagent_return':   handleSubagentReturn(event.payload, prev.currentTime, state); break

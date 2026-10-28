@@ -24,13 +24,21 @@ Real-time visualization of Claude Code and Codex sessions. Watch your agents thi
 
 Codex sessions are detected from local rollout transcripts, including sessions started in the CLI, IDE integrations, and T3 Code when they write to the same Codex home. Agent Flow watches new records and polls as a fallback. It shows messages, tool calls, model, token usage, and turn activity alongside Claude sessions. The latest 1,000 parsed events per Codex session are retained for reopening the window.
 
+Sessions started in T3 Code use their actual T3 titles when available, read from its local database in read-only mode. Title changes are reflected without starting another turn. Provisional Codex titles omit image attachment references and metadata.
+
+Existing conversation history remains available in Chat/Review without appearing as a stack of new canvas bubbles when a session is detected, reopened or selected. New live messages still show their normal transient bubbles.
+
+Delegated provider transcripts are linked to their parent's reviewer node using explicit session identifiers, so their messages, tool calls and token usage appear on that node. Completed Codex sessions retire after the inactivity timeout and can reappear if work resumes.
+
 If you use a custom `CODEX_HOME`, launch Agent Flow with that environment variable set; it scans `$CODEX_HOME/sessions`. Only local sessions with transcript activity in the last 10 minutes are discovered. Older sessions are picked up when their transcript changes again. Cloud-only sessions and sessions without persisted local transcripts are not discovered.
+
+Session names come from saved T3 or Codex metadata when available and update after a rename. On startup and window reopening, messages are restored in the chat without replaying the history as new canvas bubbles.
 
 ### Mixed-provider agents
 
 Each agent and subagent uses its own Claude or OpenAI logo. Provider identity comes from the model and invocation metadata: native Claude `Agent`/`Task` calls, Codex `spawn_agent`, T3 `delegate_task`, and direct `codex exec` or `claude --print` commands. This supports workflows such as sol-loop, Dredd, and council in either direction.
 
-CLI reviewers using `--ephemeral` appear as child nodes from their launching command even without a separate session transcript. T3 delegation results can update the child's provider/model, and asynchronous dispatch stays active until a completion result or matching task notification arrives. Detailed child transcripts remain in their own sessions when persisted.
+CLI reviewers using `--ephemeral` appear as child nodes from their launching command even without a separate session transcript. T3 delegation results can update the child's provider/model, and asynchronous dispatch stays active until a completion result, linked transcript completion or matching task notification arrives. Persisted child transcripts are integrated into the delegated node when explicit identifiers link them to their parent; unlinked transcripts remain separate sessions.
 
 ### Claude Code Hooks
 

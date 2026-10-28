@@ -20,8 +20,10 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 /** Position of the nth slot on the golden-angle spiral; slot 0 is the origin and no two slots
  *  are closer than SESSION_LAYOUT.spacing. */
 function rootSlotPosition(slot: number): { x: number; y: number } {
+  if (slot === 0) return { x: 0, y: 0 }
   const radius = SESSION_LAYOUT.spacing * Math.sqrt(slot)
-  const angle = slot * GOLDEN_ANGLE
+  // Rotate the layout 90° counterclockwise to use the viewport's width.
+  const angle = slot * GOLDEN_ANGLE - Math.PI / 2
   return { x: radius * Math.cos(angle), y: radius * Math.sin(angle) }
 }
 
@@ -50,6 +52,18 @@ export function handleAgentSpawn(
   const provider = payload.provider === 'codex' || payload.provider === 'claude'
     ? payload.provider : providerFromModel(model) ?? (parentId ? state.agents.get(parentId)?.provider : isMain ? 'claude' : undefined)
 
+  // A delegated transcript can confirm a node already created by its parent's tool call.
+  // Preserve the node's history, position and edge when both sources announce the same agent.
+  const existing = state.agents.get(name)
+  if (existing) {
+    state.agents.set(name, {
+      ...existing, provider: provider ?? existing.provider,
+      tokensMax: model ? ctx.getContextWindowSize(model) : existing.tokensMax,
+      ...(existing.state === 'complete' && payload.resumed === true ? { state: 'idle', completeTime: undefined } : {}),
+    })
+    return
+  }
+
   let x = 0, y = 0
   if (isMain && typeof payload.sessionId === 'string') {
     const slot = freeRootSlot(state.agents, name)
@@ -69,9 +83,9 @@ export function handleAgentSpawn(
 
       let angle: number
       if (siblingAngles.length === 0) {
-        // First child: use hash-based angle
+        // First child: use the same quarter-turn as the session roots.
         const hash = name.split('').reduce((h, c) => ((h << 5) - h) + c.charCodeAt(0), 0)
-        angle = (Math.abs(hash) % 360) * (Math.PI / 180)
+        angle = (Math.abs(hash) % 360) * (Math.PI / 180) - Math.PI / 2
       } else {
         // Find the largest angular gap between existing siblings and place in the middle
         siblingAngles.sort((a, b) => a - b)
@@ -195,6 +209,7 @@ export function handleAgentIdle(
 ): void {
   const idleName = asString(payload.name)
   const idleAgent = state.agents.get(idleName)
+  if (idleAgent?.state === 'complete') return
   if (idleAgent && payload.turnComplete === true) {
     state.agents.set(idleName, { ...idleAgent, state: 'idle', currentTool: undefined })
   } else if (idleAgent && (idleAgent.state === 'tool_calling' || idleAgent.state === 'waiting_permission')) {

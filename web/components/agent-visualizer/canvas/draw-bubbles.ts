@@ -29,7 +29,7 @@ export function drawMessageBubblesWorld(
       const isThinking = role === 'thinking'
       const bgColor = isThinking ? COLORS.bubbleThinkingBase : role === 'user' ? COLORS.bubbleUserBase : COLORS.bubbleAssistantBase
       const textColor = isThinking ? COLORS.roleThinkingText : role === 'user' ? COLORS.roleUserText : COLORS.roleAssistantText
-      const label = isThinking ? '\uD83D\uDCAD THINKING' : role === 'user' ? 'USER' : 'CLAUDE'
+      const label = isThinking ? '\uD83D\uDCAD THINKING' : role === 'user' ? 'USER' : agent.provider === 'codex' ? 'GPT' : 'CLAUDE'
 
       // Thinking bubbles: smaller font, tighter spacing, more translucent
       const style = isThinking ? BUBBLE_DRAW.thinking : BUBBLE_DRAW.normal

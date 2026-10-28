@@ -9,6 +9,7 @@
 
 export type AgentEventType =
   | 'agent_spawn'
+  | 'agent_link'
   | 'agent_complete'
   | 'agent_idle'
   | 'message'
@@ -26,6 +27,8 @@ export interface AgentEvent {
   type: AgentEventType
   payload: Record<string, unknown>
   sessionId?: string
+  /** Restored conversation content, retained without transient live bubbles. */
+  historical?: boolean
 }
 
 export interface SessionInfo {
@@ -35,6 +38,12 @@ export interface SessionInfo {
   status: 'active' | 'completed'
   startTime: number
   lastActivityTime: number
+}
+
+export interface SessionMerge {
+  sessionId: string
+  parentSessionId: string
+  events: AgentEvent[]
 }
 
 // ─── Extension → Webview Messages ────────────────────────────────────────────
@@ -71,6 +80,7 @@ export interface TranscriptEntry {
   sessionId: string
   type: string
   uuid?: string
+  isMeta?: boolean
   message: {
     role: string
     model?: string
