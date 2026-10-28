@@ -21,7 +21,7 @@ describe('CodexSessionWatcher', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-flow-codex-'))
-    watcher = new CodexSessionWatcher({ sessionsDir: path.join(root, 'sessions') })
+    watcher = new CodexSessionWatcher({ sessionsDir: path.join(root, 'sessions'), t3DataDir: path.join(root, 't3') })
     events = []
     lifecycle = []
     watcher.onEvent(event => events.push(event))
@@ -93,6 +93,33 @@ describe('CodexSessionWatcher', () => {
     expect(lifecycle).toContainEqual({ type: 'updated', sessionId: 'codex:late', label: 'Arreglar 🚀' })
   })
 
+  it('restores old messages without showing them as live bubbles, while new messages remain live', () => {
+    const file = rollout('history', message('user', 'Old request', 'user-1') + message('assistant', 'Old answer', 'assistant-1'))
+    watcher.start()
+    expect(events.filter(event => event.type === 'message')).toHaveLength(2)
+    expect(events.filter(event => event.type === 'message').every(event => event.payload.historical === true)).toBe(true)
+
+    fs.appendFileSync(file, message('user', 'New request', 'user-2'))
+    watcher.forceScan()
+    expect(events.at(-1)?.payload).toMatchObject({ content: 'New request' })
+    expect(events.at(-1)?.payload.historical).toBeUndefined()
+  })
+
+  it('prefers saved session names over the initial prompt and detects a rename without new transcript content', () => {
+    const index = path.join(root, 'session_index.jsonl')
+    fs.writeFileSync(index, JSON.stringify({ id: 'named', thread_name: 'Horizontal nodes' }) + '\n')
+    rollout('named', message('user', 'A long initial prompt that is not the session name', 'user-1'))
+    watcher.start()
+    expect(watcher.getActiveSessions()[0].label).toBe('Horizontal nodes')
+    expect(events[0].payload.task).toBe('Horizontal nodes')
+
+    fs.appendFileSync(index, JSON.stringify({ id: 'named', thread_name: 'Renamed graph' }) + '\n')
+    watcher.forceScan()
+    expect(watcher.getActiveSessions()[0].label).toBe('Renamed graph')
+    expect(lifecycle.at(-1)).toEqual({ type: 'updated', sessionId: 'codex:named', label: 'Renamed graph' })
+    expect(watcher.buildReplayStartEvents()[0].event.payload.task).toBe('Renamed graph')
+  })
+
   it('ignores stale history but detects sessions resumed in old date directories', () => {
     const old = rollout('old', '', '2025/01/01')
     const staleTime = new Date(Date.now() - (ACTIVE_SESSION_AGE_S + 60) * 1000)
@@ -105,7 +132,28 @@ describe('CodexSessionWatcher', () => {
     expect(watcher.getActiveSessions().map(session => session.id)).toContain('codex:old')
   })
 
-  it('ends inactive sessions and reactivates them when another turn starts', () => {
+  it.each(['task_complete', 'turn_complete', 'turn_aborted', undefined])('expires an inactive node after %s, including its replay history', (completion) => {
+    rollout('inactive', message('user', 'First task', 'user-1') + (completion ? line('event_msg', { type: completion }) : ''))
+    watcher.start()
+    const expiresAt = Math.ceil(watcher.getActiveSessions()[0].lastActivityTime) + INACTIVITY_TIMEOUT_MS
+
+    vi.setSystemTime(expiresAt - 1)
+    watcher.forceScan()
+    expect(events.filter(event => event.type === 'agent_complete')).toHaveLength(0)
+
+    vi.setSystemTime(expiresAt)
+    watcher.forceScan()
+    expect(events.filter(event => event.type === 'agent_complete')).toEqual([
+      expect.objectContaining({ sessionId: 'codex:inactive', payload: { name: ORCHESTRATOR_NAME } }),
+    ])
+    expect(watcher.getActiveSessions()[0].status).toBe('completed')
+    expect(watcher.buildReplayStartEvents().at(-1)?.event.type).toBe('agent_complete')
+
+    watcher.forceScan()
+    expect(events.filter(event => event.type === 'agent_complete')).toHaveLength(1)
+  })
+
+  it('recreates an expired node before delivering a resumed turn, and can expire it again', () => {
     const file = rollout('resume', message('user', 'First task', 'user-1'))
     watcher.start()
     vi.setSystemTime(watcher.getActiveSessions()[0].lastActivityTime + INACTIVITY_TIMEOUT_MS + 1)
@@ -116,13 +164,35 @@ describe('CodexSessionWatcher', () => {
     watcher.forceScan()
     expect(watcher.getActiveSessions()[0].status).toBe('active')
     expect(lifecycle.map(event => event.type)).toEqual(['started', 'ended', 'started'])
+    expect(events.filter(event => event.type === 'agent_spawn')).toHaveLength(2)
+    expect(events.slice(-2)).toEqual([
+      expect.objectContaining({ type: 'agent_spawn', payload: expect.objectContaining({ name: ORCHESTRATOR_NAME, provider: 'codex' }) }),
+      expect.objectContaining({ type: 'message', payload: expect.objectContaining({ content: 'Second task' }) }),
+    ])
+
+    vi.setSystemTime(Math.ceil(watcher.getActiveSessions()[0].lastActivityTime) + INACTIVITY_TIMEOUT_MS)
+    watcher.forceScan()
+    expect(events.filter(event => event.type === 'agent_complete')).toHaveLength(2)
+  })
+
+  it('keeps a node and its history when another turn starts before the inactivity timeout', () => {
+    const file = rollout('quick-resume', message('user', 'First task', 'user-1') + line('event_msg', { type: 'task_complete' }))
+    watcher.start()
+    vi.setSystemTime(watcher.getActiveSessions()[0].lastActivityTime + INACTIVITY_TIMEOUT_MS - 1)
+    fs.appendFileSync(file, line('event_msg', { type: 'task_started' }) + message('user', 'Second task', 'user-2'))
+    fs.utimesSync(file, new Date(), new Date())
+    watcher.forceScan()
+
+    expect(watcher.getActiveSessions()[0].status).toBe('active')
     expect(events.filter(event => event.type === 'agent_spawn')).toHaveLength(1)
+    expect(events.filter(event => event.type === 'agent_complete')).toHaveLength(0)
+    expect(events.filter(event => event.type === 'message').map(event => event.payload.content)).toEqual(['First task', 'Second task'])
   })
 
   it('uses CODEX_HOME without requiring a Claude directory', () => {
     watcher.dispose()
     vi.stubEnv('CODEX_HOME', root)
-    watcher = new CodexSessionWatcher()
+    watcher = new CodexSessionWatcher({ t3DataDir: path.join(root, 't3') })
     rollout('custom-home')
     watcher.start()
     expect(watcher.getActiveSessions()[0]).toMatchObject({ id: 'codex:custom-home', provider: 'codex' })

@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import type { ConnectionStatus, AgentEvent, SessionInfo } from '@/lib/bridge-types'
 import { getActiveBridge, type SessionViewMode } from '@/lib/bridge-runtime'
 import { SimulationEvent } from '@/lib/agent-types'
-import { scopeSessionEvent } from '@/lib/session-events'
+import { asHistoricalEvent, scopeSessionEvent } from '@/lib/session-events'
 
 interface BridgeHookResult {
   sessionViewMode: SessionViewMode
@@ -75,11 +75,11 @@ export function useBridge(): BridgeHookResult {
         .filter(([sessionId]) => !dismissedSessionsRef.current.has(sessionId))
         .flatMap(([, events]) => events)
       events.sort((a, b) => a.time - b.time)
-      for (const event of events) pendingEventsRef.current.push(scopeSessionEvent(event))
+      for (const event of events) pendingEventsRef.current.push(scopeSessionEvent(asHistoricalEvent(event)))
       setSessionsWithActivity(new Set())
     } else if (selectedSessionIdRef.current) {
       const events = sessionEventsRef.current.get(selectedSessionIdRef.current) ?? []
-      for (const event of events) pendingEventsRef.current.push(event)
+      for (const event of events) pendingEventsRef.current.push(asHistoricalEvent(event))
     }
     setSessionViewMode(mode)
   }, [])
@@ -150,7 +150,9 @@ export function useBridge(): BridgeHookResult {
           const events = event.sessionId && dismissedSessionsRef.current.has(event.sessionId)
             ? sessionEventsRef.current.get(event.sessionId) ?? [simEvent]
             : [simEvent]
-          for (const buffered of events) pendingEventsRef.current.push(scopeSessionEvent(buffered))
+          for (const buffered of events) {
+            pendingEventsRef.current.push(scopeSessionEvent(buffered === simEvent ? buffered : asHistoricalEvent(buffered)))
+          }
         } else {
           pendingEventsRef.current.push(simEvent)
         }
@@ -225,7 +227,7 @@ export function useBridge(): BridgeHookResult {
           const buffered = sessionEventsRef.current.get(autoId)
           if (sessionViewModeRef.current === 'tabs' && buffered && buffered.length > 0) {
             pendingEventsRef.current.length = 0
-            pendingEventsRef.current.push(...buffered)
+            pendingEventsRef.current.push(...buffered.map(asHistoricalEvent))
             setEventVersion(v => v + 1)
           }
         }
@@ -282,7 +284,7 @@ export function useBridge(): BridgeHookResult {
       // Clear in-place then push to preserve array identity for stale closures
       const buffered = sessionEventsRef.current.get(sessionId) || []
       pendingEventsRef.current.length = 0
-      pendingEventsRef.current.push(...buffered.slice(fromIndex))
+      pendingEventsRef.current.push(...buffered.slice(fromIndex).map(asHistoricalEvent))
       setEventVersion(v => v + 1)
       // Clear activity indicator for selected session
       setSessionsWithActivity(prev => {

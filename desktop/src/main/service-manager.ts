@@ -1,6 +1,6 @@
 import { BrowserWindow, shell } from 'electron'
 import { HookServer } from '../shared/hook-server'
-import { AgentEvent, SessionInfo } from '../shared/protocol'
+import { asHistoricalEvent, AgentEvent, SessionInfo } from '../shared/protocol'
 import { SessionWatcher } from '../shared/session-watcher'
 import { CodexSessionWatcher } from '../shared/codex-session-watcher'
 import type { SessionSource } from '../shared/session-source'
@@ -119,7 +119,7 @@ export class ServiceManager {
     for (const source of this.sessionSources) {
       for (const replayEvent of source.buildReplayStartEvents()) {
         replayedPayloads.add(replayEvent.event.payload)
-        managed.win.webContents.send('agent:event', { ...replayEvent.event, sessionId: replayEvent.sessionId })
+        managed.win.webContents.send('agent:event', { ...asHistoricalEvent(replayEvent.event), sessionId: replayEvent.sessionId })
       }
     }
     managed.win.webContents.send('app:replayComplete')

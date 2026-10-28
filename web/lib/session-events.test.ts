@@ -73,8 +73,8 @@ describe('combined session events', () => {
     expect(ctx.syncForceSimulation).not.toHaveBeenCalled()
   })
 
-  it('removes a finished session root once it has lingered for 60 seconds', () => {
-    let state = emitTo(createEmptyState(), 'a', 'agent_spawn', { name: 'Orchestrator', isMain: true })
+  it.each(['claude', 'codex'])('removes a finished %s session root once it has lingered for 60 seconds', (provider) => {
+    let state = emitTo(createEmptyState(), 'a', 'agent_spawn', { name: 'Orchestrator', isMain: true, provider })
     state = emitTo(state, 'a', 'agent_complete', { name: 'Orchestrator' })
     const root = JSON.stringify(['a', 'Orchestrator'])
 

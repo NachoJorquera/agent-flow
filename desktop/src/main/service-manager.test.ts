@@ -125,6 +125,14 @@ describe('ServiceManager handshake', () => {
     codex.emitEvent(event)
     manager.markInitialStateApplied(win)
     expect(send.mock.calls.filter(([channel, value]) => channel === 'agent:event' && value.type === 'message')).toHaveLength(1)
+    expect(send).toHaveBeenCalledWith('agent:event', expect.objectContaining({
+      type: 'message', payload: expect.objectContaining({ content: 'Fix it', historical: true }),
+    }))
+    expect(event.payload.historical).toBeUndefined()
+    codex.emitEvent({ ...event, time: 2, payload: { ...event.payload, content: 'New live message' } })
+    expect(send).toHaveBeenLastCalledWith('agent:event', expect.objectContaining({
+      payload: { agent: 'orchestrator', role: 'user', content: 'New live message' },
+    }))
     await manager.stop()
   })
 })

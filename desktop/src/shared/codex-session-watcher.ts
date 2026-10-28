@@ -1,9 +1,10 @@
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import type { AgentEvent, SessionInfo } from './protocol'
+import { asHistoricalEvent, type AgentEvent, type SessionInfo } from './protocol'
 import { ACTIVE_SESSION_AGE_S, INACTIVITY_TIMEOUT_MS, ORCHESTRATOR_NAME, SCAN_INTERVAL_MS } from './constants'
 import { CodexTranscriptParser } from './codex-transcript-parser'
+import { CodexSessionTitles } from './codex-session-titles'
 import { TypedEventEmitter } from './event-emitter'
 import { readCompleteFileLines } from './fs-utils'
 import { createLogger } from './logger'
@@ -20,6 +21,8 @@ interface CodexSession {
   watcher: fs.FSWatcher | null
   events: AgentEvent[]
   bootstrapping: boolean
+  /** Turn completion only idles the node; inactivity completes it for removal. */
+  timedOut: boolean
 }
 
 /** Discovers CLI, IDE and desktop Codex rollouts under CODEX_HOME/sessions. */
@@ -30,6 +33,7 @@ export class CodexSessionWatcher implements SessionSource {
   private scanTimer: NodeJS.Timeout | null = null
   private debounceTimer: NodeJS.Timeout | null = null
   private readonly sessionsDir: string
+  private readonly titles: CodexSessionTitles
   private readonly events = new TypedEventEmitter<AgentEvent>()
   private readonly detected = new TypedEventEmitter<string>()
   private readonly lifecycle = new TypedEventEmitter<SessionLifecycle>()
@@ -37,8 +41,9 @@ export class CodexSessionWatcher implements SessionSource {
   readonly onSessionDetected = this.detected.event
   readonly onSessionLifecycle = this.lifecycle.event
 
-  constructor(options?: { sessionsDir?: string }) {
+  constructor(options?: { sessionsDir?: string; t3DataDir?: string }) {
     this.sessionsDir = options?.sessionsDir ?? path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'sessions')
+    this.titles = new CodexSessionTitles(path.dirname(this.sessionsDir), options?.t3DataDir ?? path.join(os.homedir(), '.t3', 'userdata'))
   }
 
   start(): void {
@@ -48,11 +53,13 @@ export class CodexSessionWatcher implements SessionSource {
   }
 
   forceScan(): void {
+    this.titles.refresh()
     // Always poll known files, including resumed sessions in older date directories.
     for (const session of this.sessions.values()) {
+      this.updateLabel(session)
       this.readSession(session)
-      if (session.info.status === 'active' && Date.now() - session.info.lastActivityTime >= INACTIVITY_TIMEOUT_MS) {
-        this.setTurnState(session, false)
+      if (!session.timedOut && Date.now() - session.info.lastActivityTime >= INACTIVITY_TIMEOUT_MS) {
+        this.completeInactiveSession(session)
       }
     }
     if (!fs.existsSync(this.sessionsDir)) return
@@ -111,20 +118,18 @@ export class CodexSessionWatcher implements SessionSource {
         startTime: Number.isFinite(timestamp) ? timestamp : Date.now(),
         lastActivityTime: initial.mtime,
       },
-      filePath, offset: initial.offset, watcher: null, events: [], bootstrapping: true,
+      filePath, offset: initial.offset, watcher: null, events: [], bootstrapping: true, timedOut: false,
       parser: new CodexTranscriptParser({
         emit: event => this.emit(session, event),
         elapsed: () => Math.max(0, (Date.now() - session.info.startTime) / 1000),
-        onLabel: label => {
-          session.info.label = label
-          if (!session.bootstrapping) this.fireLifecycle(session, 'updated')
-        },
+        onLabel: () => this.updateLabel(session),
         onTurnState: active => this.setTurnState(session, active),
       }),
     }
     this.sessions.set(sessionId, session)
     this.files.add(filePath)
     for (const line of initial.lines) session.parser.processLine(line)
+    this.updateLabel(session)
     session.bootstrapping = false
     this.detected.fire(sessionId)
     this.fireLifecycle(session, 'started')
@@ -146,10 +151,24 @@ export class CodexSessionWatcher implements SessionSource {
     } catch { /* a rollout may be moved to archived_sessions while being watched */ }
   }
 
+  private updateLabel(session: CodexSession): void {
+    const label = this.titles.get(session.info.id.slice('codex:'.length)) ?? session.parser.label
+    if (label === session.info.label) return
+    session.info.label = label
+    if (!session.bootstrapping) this.fireLifecycle(session, 'updated')
+  }
+
   private setTurnState(session: CodexSession, active: boolean): void {
     const status = active ? 'active' : 'completed'
     if (session.info.status === status) return
     session.info.status = status
+    if (active && session.timedOut) {
+      session.timedOut = false
+      this.emit(session, {
+        ...this.spawnEvent(session),
+        time: Math.max(0, (Date.now() - session.info.startTime) / 1000),
+      })
+    }
     if (!active) {
       this.emit(session, {
         time: Math.max(0, (Date.now() - session.info.startTime) / 1000),
@@ -165,6 +184,17 @@ export class CodexSessionWatcher implements SessionSource {
     }
   }
 
+  private completeInactiveSession(session: CodexSession): void {
+    const wasActive = session.info.status === 'active'
+    session.timedOut = true
+    session.info.status = 'completed'
+    this.emit(session, {
+      time: Math.max(0, (Date.now() - session.info.startTime) / 1000),
+      type: 'agent_complete', payload: { name: ORCHESTRATOR_NAME },
+    })
+    if (wasActive) this.fireLifecycle(session, 'ended')
+  }
+
   private spawnEvent(session: CodexSession): AgentEvent {
     return {
       time: 0, type: 'agent_spawn',
@@ -173,6 +203,7 @@ export class CodexSessionWatcher implements SessionSource {
   }
 
   private emit(session: CodexSession, event: AgentEvent): void {
+    if (session.bootstrapping) event = asHistoricalEvent(event)
     session.events.push(event)
     if (session.events.length > MAX_REPLAY_EVENTS) session.events.shift()
     if (!session.bootstrapping) this.events.fire({ ...event, sessionId: session.info.id })

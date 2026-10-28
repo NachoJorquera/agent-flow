@@ -34,7 +34,7 @@ export function handleMessage(
     const bubbleRole: 'user' | 'thinking' | 'assistant' = role === 'user' ? 'user' : role === 'thinking' ? 'thinking' : 'assistant'
     const updates: Partial<typeof msgAgent> = {}
 
-    {
+    if (payload.historical !== true) {
       // Truncate thinking for graph bubbles (full text in message feed panel)
       const bubbleText = bubbleRole === 'thinking' ? content.slice(0, LABEL_LEN_BUBBLE) + (content.length > LABEL_LEN_BUBBLE ? '...' : '') : content
       // Dedup: skip if last bubble has the same text (dual event source race)

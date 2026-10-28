@@ -11,6 +11,19 @@ const context: ProcessEventContext = {
 }
 
 describe('provider identity in agent graphs', () => {
+  it('keeps restored messages in the conversation without creating new bubbles', () => {
+    let state = processEvent({ time: 0, type: 'agent_spawn', payload: { name: 'orchestrator', isMain: true, provider: 'codex' } }, createEmptyState(), context)
+    for (const [i, role] of ['user', 'assistant', 'thinking'].entries()) {
+      state = processEvent({ time: i, type: 'message', payload: { agent: 'orchestrator', role, content: `Restored ${role}`, historical: true } }, state, context)
+    }
+    expect(state.agents.get('orchestrator')?.messageBubbles).toEqual([])
+    expect(state.conversations.get('orchestrator')?.map(message => message.content)).toEqual(['Restored user', 'Restored assistant', 'Restored thinking'])
+
+    state = processEvent({ time: 3, type: 'message', payload: { agent: 'orchestrator', role: 'assistant', content: 'Live answer' } }, state, context)
+    expect(state.agents.get('orchestrator')?.messageBubbles.map(bubble => bubble.text)).toEqual(['Live answer'])
+    expect(state.conversations.get('orchestrator')).toHaveLength(4)
+  })
+
   it.each([
     ['claude', 'codex', 'gpt-6.1-sol'],
     ['codex', 'claude', 'sonnet'],

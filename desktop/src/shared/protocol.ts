@@ -28,6 +28,13 @@ export interface AgentEvent {
   sessionId?: string
 }
 
+/** Retain restored messages in the conversation without showing them as new canvas bubbles. */
+export function asHistoricalEvent(event: AgentEvent): AgentEvent {
+  return event.type === 'message'
+    ? { ...event, payload: { ...event.payload, historical: true } }
+    : event
+}
+
 export interface SessionInfo {
   id: string
   provider?: 'claude' | 'codex'

@@ -1,5 +1,12 @@
 import type { SimulationEvent } from './agent-types'
 
+/** Rebuilding a view restores its conversation, without replaying old message bubbles. */
+export function asHistoricalEvent(event: SimulationEvent): SimulationEvent {
+  return event.type === 'message'
+    ? { ...event, payload: { ...event.payload, historical: true } }
+    : event
+}
+
 /** Keep agent identities independent when multiple sessions share one simulation. */
 export function scopeSessionEvent(event: SimulationEvent): SimulationEvent {
   if (!event.sessionId) return event
